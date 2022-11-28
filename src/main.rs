@@ -21,8 +21,8 @@ static A_PRIMA: u128 = 273u128;
 static C_PRIMA: u128 = 2147483655u128;
 static M_PRIMA: u128 = LAST_NUMBR;
 
-static QUEUE_LIMIT: usize = 300;
 static CORES:       usize = 16;
+static QUEUE_LIMIT: usize = CORES * 20;
 
 fn check_reserved(num: BigUint) -> bool {
     if num > BigUint::from(MAX_IIP) {
@@ -44,7 +44,7 @@ fn process(num: BigUint, counter: Arc<Mutex<Vec<(u128, f32)>>>) {
 
     (c, p)  = counter.lock().unwrap()[0];
     
-    let     snum:   String = num.clone().to_string().pad_to_width_with_alignment(15, Alignment::Right);
+    // let     snum:   String = num.clone().to_string().pad_to_width_with_alignment(15, Alignment::Right);
     let mut msg:    String = String::new();
     let     rech:   bool;
 
@@ -60,25 +60,33 @@ fn process(num: BigUint, counter: Arc<Mutex<Vec<(u128, f32)>>>) {
         let sip: String = Ipv4Addr::from(num.to_string().parse::<u32>().unwrap()).to_string().pad_to_width_with_alignment(15, Alignment::Right);
         print!("[{p:>15}][{a:>10}/{t}][IP: {b:>15}]                \r", a=c, p=p, t=LAST_NUMBR, b=sip);
     } else {
-        print!("[{p:>15}][{a:>10}/{t}][IP: {b:>15}][MSG: {c}]\r", a=c, p=p, t=LAST_NUMBR, b=snum, c=msg);
+        // print!("[{p:>15}][{a:>10}/{t}][IP: {b:>15}][MSG: {c}]\r", a=c, p=p, t=LAST_NUMBR, b=snum, c=msg);
     }
 
     io::stdout().flush().expect("Unable to flush stdout");
 }
 
 fn check_queue(queue: Arc<Mutex<Vec<BigUint>>>, counter: Arc<Mutex<Vec<(u128, f32)>>>) {
+    let mut n_c: u16 = 0;
     loop {
-        sleep(Duration::from_millis(100));
         let iip = queue.lock().unwrap().pop();
         if iip.is_none() {
-            sleep(Duration::from_millis(100));
+            if n_c > 10 { 
+
+                println!("Tread died after 10s without work...                                        ");
+                break;
+            } else {
+                n_c += 1;
+                sleep(Duration::from_millis(100));
+            };
         } else {
+            n_c = 0;
             process(iip.unwrap(), counter.clone());
         }
     }
 }
 
-fn main() {    
+fn main() {
     let mut num:   BigUint  = BigUint::from(rand::thread_rng().gen::<u128>());
 
     let ctn:       Arc<Mutex<Vec<(u128, f32)>>> = Arc::new(Mutex::new(vec![(0, 0.0)]));
@@ -86,20 +94,25 @@ fn main() {
     
     let mut c: u128 = 0;
 
+    println!("Starting threads!");
     for _ in 0..(CORES * 4) {
         let (_tc, _ct) = (to_check.clone(), ctn.clone());
-        thread::spawn(move || { check_queue(_tc, _ct) });
+        thread::spawn(move || { sleep(Duration::from_secs(2)); check_queue(_tc, _ct) });
     }
 
+    num = (BigUint::from(A_PRIMA) * num + BigUint::from(C_PRIMA)) % BigUint::from(M_PRIMA);
+    let first_number = num.clone();
+    
     loop {
         if to_check.lock().unwrap().len() < QUEUE_LIMIT {
-            num = (BigUint::from(A_PRIMA) * num + BigUint::from(C_PRIMA)) % BigUint::from(M_PRIMA);
             c += 1;
             ctn.lock().unwrap()[0] = (c, ((c as f32) * 100.0f32 / (LAST_NUMBR as f32)));
             to_check.lock().unwrap().push(num.clone());
+            num = (BigUint::from(A_PRIMA) * num + BigUint::from(C_PRIMA)) % BigUint::from(M_PRIMA);
         } else {
             sleep(Duration::from_millis(50));
         };
+        if num == first_number { break }
     }
 }
 
