@@ -8,6 +8,7 @@ use std::io::Write;
 use std::thread;
 use std::io;
 
+use dns_lookup::lookup_addr;
 use pad::{PadStr, Alignment};
 use num_bigint::BigUint;
 use rand::Rng;
@@ -57,11 +58,20 @@ fn process(num: BigUint, counter: Arc<Mutex<Vec<(u128, f32)>>>) {
     }
 
     if rech {
-        let sip: String = Ipv4Addr::from(num.to_string().parse::<u32>().unwrap()).to_string().pad_to_width_with_alignment(15, Alignment::Right);
-        print!("[{p:>15}][{a:>10}/{t}][IP: {b:>15}]                \r", a=c, p=p, t=LAST_NUMBR, b=sip);
-    } else {
-        // print!("[{p:>15}][{a:>10}/{t}][IP: {b:>15}][MSG: {c}]\r", a=c, p=p, t=LAST_NUMBR, b=snum, c=msg);
+        let mut ipn: String = String::new();
+        let ip: Ipv4Addr = Ipv4Addr::from(num.to_string().parse::<u32>().unwrap());
+        let sip: String = ip.clone().to_string().pad_to_width_with_alignment(15, Alignment::Right);
+        ipn.push_str(&lookup_addr(&ip.into()).unwrap());
+
+        if ipn != sip {
+            println!("[{p:>15}][{a:>10}/{t}][IP: {b:>15}][DNS: {d}]", a=c, p=p, t=LAST_NUMBR, b=sip, d=ipn);
+        } else {
+            print!("[{p:>15}][{a:>10}/{t}][IP: {b:>15}][IPN: {d}]", a=c, p=p, t=LAST_NUMBR, b=sip, d=ipn);
+        }
     }
+    // else {
+    //     println!("[{p:>15}][{a:>10}/{t}][IP: {b:>15}][MSG: {c}]", a=c, p=p, t=LAST_NUMBR, b=snum, c=msg);
+    // }
 
     io::stdout().flush().expect("Unable to flush stdout");
 }
