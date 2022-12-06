@@ -40,52 +40,57 @@ fn check_reserved(num: BigUint) -> bool {
 }
 
 fn process(num: BigUint, counter: Arc<Mutex<Vec<(u128, f32)>>>) {
-    let c: u128;
-    let p: f32;
+    let mut msg:    String = String::new();
+
+    #[allow(unused_mut)]
+    #[allow(unused_variables)]
+    let mut snum:   String = String::new();
+    
+    let     rech:   bool;
+    let     c:      u128;
+    let     p:      f32;
 
     (c, p)  = counter.lock().unwrap()[0];
-    
-    // let     snum:   String = num.clone().to_string().pad_to_width_with_alignment(15, Alignment::Right);
-    let mut msg:    String = String::new();
-    let     rech:   bool;
 
-    if check_reserved(num.clone()) {
-        msg.push_str("REJECTED!");
-        rech = false;
+    #[cfg(debug_assertions)]
+    snum.push_str(&num.clone().to_string().pad_to_width_with_alignment(15, Alignment::Right));
+
+    rech = check_reserved(num.clone());
+    
+    if rech {
+        msg.push_str("IP!");
     } else {
-        msg.push_str("IP!      ");
-        rech = true;
+        msg.push_str("REJECTED!");
     }
 
     if rech {
-        let mut ipn: String = String::new();
-        let ip: Ipv4Addr = Ipv4Addr::from(num.to_string().parse::<u32>().unwrap());
-        let sip: String = ip.clone().to_string().pad_to_width_with_alignment(15, Alignment::Right);
-        ipn.push_str(&lookup_addr(&ip.into()).unwrap());
+        let ip:     Ipv4Addr = Ipv4Addr::from(num.to_string().parse::<u32>().unwrap());
+        let sip:    String   = ip.clone().to_string().pad_to_width_with_alignment(15, Alignment::Right);
+        let ipn:    String   = lookup_addr(&ip.into()).unwrap();
 
-        if ipn != sip {
-            println!("[{p:>15}][{a:>10}/{t}][IP: {b:>15}][DNS: {d}]", a=c, p=p, t=LAST_NUMBR, b=sip, d=ipn);
+        if ipn != ip.to_string() {
+            println!("{}", format!("[{p:>15}][{a:>10}/{t}][IP: {b:>15}][DNS: {d}]", a=c, p=p, t=LAST_NUMBR, b=sip, d=ipn));
         } else {
-            print!("[{p:>15}][{a:>10}/{t}][IP: {b:>15}][IPN: {d}]", a=c, p=p, t=LAST_NUMBR, b=sip, d=ipn);
+            #[cfg(debug_assertions)]
+            println!("{}", format!("[{p:>15}][{a:>10}/{t}][IP: {b:>15}][IPN: {d}]", a=c, p=p, t=LAST_NUMBR, b=sip, d=ipn));
         }
+    } else {
+        #[cfg(debug_assertions)]
+        println!("{}", format!("[{p:>15}][{a:>10}/{t}][IP: {b:>15}][MSG: {c}]", a=c, p=p, t=LAST_NUMBR, b=snum, c=msg));
     }
-    // else {
-    //     println!("[{p:>15}][{a:>10}/{t}][IP: {b:>15}][MSG: {c}]", a=c, p=p, t=LAST_NUMBR, b=snum, c=msg);
-    // }
-
-    io::stdout().flush().expect("Unable to flush stdout");
+    io::stdout().flush().expect("\n\rUnable to flush stdout!");
 }
 
-fn check_queue(queue: Arc<Mutex<Vec<BigUint>>>, counter: Arc<Mutex<Vec<(u128, f32)>>>) {
+fn check_queue(queue: Arc<Mutex<Vec<BigUint>>>, counter: Arc<Mutex<Vec<(u128, f32)>>>, stop_sig: Arc<Mutex<Vec<bool>>>) {
     let mut n_c: u16 = 0;
     loop {
         let iip = queue.lock().unwrap().pop();
         if iip.is_none() {
             if n_c > 10 { 
-
-                println!("Tread died after 10s without work...                                        ");
+                println!("\n\rTread died after 10s without work...");
                 break;
             } else {
+                if stop_sig.lock().unwrap()[0] { break }
                 n_c += 1;
                 sleep(Duration::from_millis(100));
             };
@@ -102,12 +107,17 @@ fn main() {
     let ctn:       Arc<Mutex<Vec<(u128, f32)>>> = Arc::new(Mutex::new(vec![(0, 0.0)]));
     let to_check:  Arc<Mutex<Vec<BigUint>>>     = Arc::new(Mutex::new(Vec::new()));
     
+    let done: Arc<Mutex<Vec<bool>>> = Arc::new(Mutex::new(vec![false]));
+    
     let mut c: u128 = 0;
-
+    
     println!("Starting threads!");
+
+    let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
+
     for _ in 0..(CORES * 4) {
-        let (_tc, _ct) = (to_check.clone(), ctn.clone());
-        thread::spawn(move || { sleep(Duration::from_secs(2)); check_queue(_tc, _ct) });
+        let (_tc, _ct, ss_) = (to_check.clone(), ctn.clone(), done.clone());
+        threads.push(thread::spawn(move || { sleep(Duration::from_secs(2)); check_queue(_tc, _ct, ss_) }));
     }
 
     num = (BigUint::from(A_PRIMA) * num + BigUint::from(C_PRIMA)) % BigUint::from(M_PRIMA);
@@ -122,8 +132,13 @@ fn main() {
         } else {
             sleep(Duration::from_millis(50));
         };
-        if num == first_number { break }
+        if num == first_number {
+            break
+        }
     }
+
+    done.lock().unwrap()[0] = true;
+
 }
 
 // from https://github.com/robertdavidgraham/masscan/blob/master/data/exclude.conf
