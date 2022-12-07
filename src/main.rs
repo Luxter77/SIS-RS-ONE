@@ -1,16 +1,20 @@
 #![allow(non_snake_case)]
 
+use std::thread::{sleep, JoinHandle};
 use std::sync::{Mutex, Arc};
+use std::fs::OpenOptions;
 use std::time::Duration;
-use std::thread::sleep;
 use std::net::Ipv4Addr;
+use std::{thread, vec};
 use std::io::Write;
-use std::thread;
+use std::fs::File;
 use std::io;
 
-use dns_lookup::lookup_addr;
+
 use pad::{PadStr, Alignment};
+use dns_lookup::lookup_addr;
 use num_bigint::BigUint;
+use queues::{Queue, IsQueue};
 use rand::Rng;
 
 static MAX_IIP:    u128 = 4294967295u128; // 255.255.255.255
@@ -24,6 +28,10 @@ static M_PRIMA: u128 = LAST_NUMBR;
 
 static CORES:       usize = 16;
 static QUEUE_LIMIT: usize = CORES * 20;
+
+static OUT_FILE_NAME: &str = "RESOLVED.csv";
+
+static SLEEP_TIME: u64 = 10;
 
 fn check_reserved(num: BigUint) -> bool {
     if num > BigUint::from(MAX_IIP) {
@@ -39,7 +47,7 @@ fn check_reserved(num: BigUint) -> bool {
     return false;
 }
 
-fn process(num: BigUint, counter: Arc<Mutex<Vec<(u128, f32)>>>) {
+fn process(num: BigUint, counter: Arc<Mutex<Vec<(u128, f32)>>>, out_queue: Arc<Mutex<Queue<(String, String)>>>) {
     let mut msg:    String = String::new();
 
     #[allow(unused_mut)]
@@ -70,6 +78,7 @@ fn process(num: BigUint, counter: Arc<Mutex<Vec<(u128, f32)>>>) {
 
         if ipn != ip.to_string() {
             println!("{}", format!("[{p:>15}][{a:>10}/{t}][IP: {b:>15}][DNS: {d}]", a=c, p=p, t=LAST_NUMBR, b=sip, d=ipn));
+            out_queue.lock().unwrap().add((ip.to_string(), ipn.clone())).unwrap();
         } else {
             #[cfg(debug_assertions)]
             println!("{}", format!("[{p:>15}][{a:>10}/{t}][IP: {b:>15}][IPN: {d}]", a=c, p=p, t=LAST_NUMBR, b=sip, d=ipn));
@@ -81,63 +90,118 @@ fn process(num: BigUint, counter: Arc<Mutex<Vec<(u128, f32)>>>) {
     io::stdout().flush().expect("\n\rUnable to flush stdout!");
 }
 
-fn check_queue(queue: Arc<Mutex<Vec<BigUint>>>, counter: Arc<Mutex<Vec<(u128, f32)>>>, stop_sig: Arc<Mutex<Vec<bool>>>) {
-    let mut n_c: u16 = 0;
+fn check_worker(queue: Arc<Mutex<Queue<BigUint>>>, counter: Arc<Mutex<Vec<(u128, f32)>>>, out_queue: Arc<Mutex<Queue<(String, String)>>>, stop_sig: Arc<Mutex<Vec<bool>>>) {
+    let mut pending = false;
+    
+    // logic too deepth for the compiler?
+    // This will never get read, but the all knowing compiler insists...
+    let mut iip: BigUint = BigUint::from(0u128); 
+
     loop {
-        let iip = queue.lock().unwrap().pop();
-        if iip.is_none() {
-            if n_c > 10 { 
-                println!("\n\rTread died after 10s without work...");
-                break;
-            } else {
-                if stop_sig.lock().unwrap()[0] { break }
-                n_c += 1;
-                sleep(Duration::from_millis(100));
-            };
+        if let Ok(p_iip) = queue.lock().unwrap().remove() {
+            iip     = p_iip;
+            pending = true;
+        }
+
+        if pending {
+            process(iip.clone(), counter.clone(), out_queue.clone());
+            pending = false;
         } else {
-            n_c = 0;
-            process(iip.unwrap(), counter.clone());
+            if stop_sig.lock().unwrap()[0] { break };
+            sleep(Duration::from_millis(SLEEP_TIME));
         }
     }
 }
 
-fn main() {
-    let mut num:   BigUint  = BigUint::from(rand::thread_rng().gen::<u128>());
+fn write_worker(mut out_file: File, out_queue: Arc<Mutex<Queue<(String, String)>>>, stop_sig: Arc<Mutex<Vec<bool>>>) {
+    loop {
+        while let Ok((ip, host)) = out_queue.lock().unwrap().remove() {
+            writeln!(&mut out_file, "{a}, {b}", a=ip, b=host).expect("Can't write to out file!");
+        }
+        if stop_sig.lock().unwrap()[1] { break }
+        sleep(Duration::from_millis(SLEEP_TIME * 2));
+    }
 
-    let ctn:       Arc<Mutex<Vec<(u128, f32)>>> = Arc::new(Mutex::new(vec![(0, 0.0)]));
-    let to_check:  Arc<Mutex<Vec<BigUint>>>     = Arc::new(Mutex::new(Vec::new()));
+    drop(out_file);
+}
+
+fn main() {
+    let mut num:       BigUint                           = BigUint::from(rand::thread_rng().gen::<u128>());
+    let     out_file:  File;
     
-    let done: Arc<Mutex<Vec<bool>>> = Arc::new(Mutex::new(vec![false]));
+    let     b:         &std::path::Path                  = std::path::Path::new(OUT_FILE_NAME);
+
+    let     ctn:       Arc<Mutex<Vec<(u128, f32)>>>      = Arc::new(Mutex::new(vec![(0, 0.0)]));
+    
+    let     to_write:  Arc<Mutex<Queue<(String, String)>>> = Arc::new(Mutex::new(Queue::new()));
+    let     to_check:  Arc<Mutex<Queue<BigUint>>>          = Arc::new(Mutex::new(Queue::new()));
+
+    let     done: Arc<Mutex<Vec<bool>>> = Arc::new(Mutex::new(vec![
+        false, // Generation
+        false, // Process
+    ]));
     
     let mut c: u128 = 0;
     
     println!("Starting threads!");
 
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
+    let write_thread: JoinHandle<()>;
+
+    let orig_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        orig_hook(panic_info);
+        std::process::exit(1);
+    }));
+
+    if b.exists() {
+        out_file = OpenOptions::new().append(true).open(b.clone()).expect("Could not open existing file!");
+        println!("{}", format!("Using existing file: {}", b.display()));
+    } else {
+        out_file = OpenOptions::new().create(true).write(true).open(b.clone()).expect("Could not create output file!");
+        println!("{}", format!("Created new file: {}", b.display()));
+        to_write.lock().unwrap().add((String::from("IP"), String::from("HOSTNAME"))).unwrap();
+    }
+
+    {
+        let (queuee, sig) = (to_write.clone(), done.clone());
+        write_thread = thread::spawn(move || {
+            sleep(Duration::from_secs(3));
+            write_worker(out_file, queuee, sig);
+        });
+    }
 
     for _ in 0..(CORES * 4) {
-        let (_tc, _ct, ss_) = (to_check.clone(), ctn.clone(), done.clone());
-        threads.push(thread::spawn(move || { sleep(Duration::from_secs(2)); check_queue(_tc, _ct, ss_) }));
+        let (_tc, _ct, oq_, ss_) = (to_check.clone(), ctn.clone(), to_write.clone(), done.clone());
+        threads.push(thread::spawn(move || {
+            sleep(Duration::from_secs(2));
+            check_worker(_tc, _ct, oq_, ss_)
+        }));
     }
 
     num = (BigUint::from(A_PRIMA) * num + BigUint::from(C_PRIMA)) % BigUint::from(M_PRIMA);
+
     let first_number = num.clone();
     
     loop {
-        if to_check.lock().unwrap().len() < QUEUE_LIMIT {
+        if to_check.lock().unwrap().size() < QUEUE_LIMIT * 10 {
             c += 1;
             ctn.lock().unwrap()[0] = (c, ((c as f32) * 100.0f32 / (LAST_NUMBR as f32)));
-            to_check.lock().unwrap().push(num.clone());
+            to_check.lock().unwrap().add(num.clone()).unwrap();
             num = (BigUint::from(A_PRIMA) * num + BigUint::from(C_PRIMA)) % BigUint::from(M_PRIMA);
-        } else {
-            sleep(Duration::from_millis(50));
-        };
-        if num == first_number {
-            break
+            if num == first_number { break }
         }
     }
 
     done.lock().unwrap()[0] = true;
+
+    while let Some(cur_thread) = threads.pop() {
+        cur_thread.join().unwrap();
+    }
+
+    done.lock().unwrap()[1] = true;
+
+    write_thread.join().unwrap();
 
 }
 
