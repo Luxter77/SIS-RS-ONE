@@ -47,7 +47,7 @@ fn check_reserved(num: BigUint) -> bool {
     return false;
 }
 
-fn process(num: BigUint, counter: Arc<Mutex<Vec<(u128, f32)>>>, out_queue: Arc<Mutex<Queue<(String, String)>>>) {
+fn process(num: BigUint, count: u128, out_queue: Arc<Mutex<Queue<(String, String)>>>) {
     let mut msg:    String = String::new();
 
     #[allow(unused_mut)]
@@ -58,7 +58,7 @@ fn process(num: BigUint, counter: Arc<Mutex<Vec<(u128, f32)>>>, out_queue: Arc<M
     let     c:      u128;
     let     p:      f32;
 
-    (c, p)  = counter.lock().unwrap()[0];
+    (c, p)  = (count, (count as f32) * 100.0f32 / (LAST_NUMBR as f32));
 
     #[cfg(debug_assertions)]
     snum.push_str(&num.clone().to_string().pad_to_width_with_alignment(15, Alignment::Right));
@@ -90,21 +90,23 @@ fn process(num: BigUint, counter: Arc<Mutex<Vec<(u128, f32)>>>, out_queue: Arc<M
     io::stdout().flush().expect("\n\rUnable to flush stdout!");
 }
 
-fn check_worker(queue: Arc<Mutex<Queue<BigUint>>>, counter: Arc<Mutex<Vec<(u128, f32)>>>, out_queue: Arc<Mutex<Queue<(String, String)>>>, stop_sig: Arc<Mutex<Vec<bool>>>) {
-    let mut pending = false;
+fn check_worker(queue: Arc<Mutex<Queue<(u128, BigUint)>>>, out_queue: Arc<Mutex<Queue<(String, String)>>>, stop_sig: Arc<Mutex<Vec<bool>>>) {
+    let mut pending: bool = false;
     
     // logic too deepth for the compiler?
     // This will never get read, but the all knowing compiler insists...
-    let mut iip: BigUint = BigUint::from(0u128); 
+    let mut iip:     BigUint = BigUint::from(0u128); 
+    let mut c:       u128    = 0u128;
 
     loop {
-        if let Ok(p_iip) = queue.lock().unwrap().remove() {
+        if let Ok((p_c, p_iip)) = queue.lock().unwrap().remove() {
             iip     = p_iip;
+            c       = p_c;
             pending = true;
         }
 
         if pending {
-            process(iip.clone(), counter.clone(), out_queue.clone());
+            process(iip.clone(), c.clone(), out_queue.clone());
             pending = false;
         } else {
             if stop_sig.lock().unwrap()[0] { break };
@@ -127,14 +129,15 @@ fn write_worker(mut out_file: File, out_queue: Arc<Mutex<Queue<(String, String)>
 
 fn main() {
     let mut num:       BigUint                           = BigUint::from(rand::thread_rng().gen::<u128>());
+
+    let mut skip:      BigUint                           = BigUint::from(0u128);
+
     let     out_file:  File;
     
     let     b:         &std::path::Path                  = std::path::Path::new(OUT_FILE_NAME);
-
-    let     ctn:       Arc<Mutex<Vec<(u128, f32)>>>      = Arc::new(Mutex::new(vec![(0, 0.0)]));
     
     let     to_write:  Arc<Mutex<Queue<(String, String)>>> = Arc::new(Mutex::new(Queue::new()));
-    let     to_check:  Arc<Mutex<Queue<BigUint>>>          = Arc::new(Mutex::new(Queue::new()));
+    let     to_check:  Arc<Mutex<Queue<(u128, BigUint)>>>          = Arc::new(Mutex::new(Queue::new()));
 
     let     done: Arc<Mutex<Vec<bool>>> = Arc::new(Mutex::new(vec![
         false, // Generation
@@ -142,7 +145,18 @@ fn main() {
     ]));
     
     let mut c: u128 = 0;
+
+    //parse cli args
     
+    if let Some(r_seed) = std::env::args().nth(1) {
+        num = r_seed.parse().expect("Invalid Seed (seed must be an unsinged int)")
+    };
+
+    if let Some(r_skip) = std::env::args().nth(2) {
+        skip = r_skip.parse().expect("Invalid skip number (skip number must be an unsinged int)");
+    };
+
+
     println!("Starting threads!");
 
     let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
@@ -172,12 +186,14 @@ fn main() {
     }
 
     for _ in 0..(CORES * 4) {
-        let (_tc, _ct, oq_, ss_) = (to_check.clone(), ctn.clone(), to_write.clone(), done.clone());
+        let (_tc, oq_, ss_) = (to_check.clone(), to_write.clone(), done.clone());
         threads.push(thread::spawn(move || {
             sleep(Duration::from_secs(2));
-            check_worker(_tc, _ct, oq_, ss_)
+            check_worker(_tc, oq_, ss_)
         }));
     }
+
+    println!("{}", format!("The seed is {}", num));
 
     num = (BigUint::from(A_PRIMA) * num + BigUint::from(C_PRIMA)) % BigUint::from(M_PRIMA);
 
@@ -186,8 +202,11 @@ fn main() {
     loop {
         if to_check.lock().unwrap().size() < QUEUE_LIMIT * 10 {
             c += 1;
-            ctn.lock().unwrap()[0] = (c, ((c as f32) * 100.0f32 / (LAST_NUMBR as f32)));
-            to_check.lock().unwrap().add(num.clone()).unwrap();
+            if skip == BigUint::from(0u128) {
+                to_check.lock().unwrap().add((c, num.clone())).unwrap();
+            } else {
+                skip -= BigUint::from(1u128);
+            }
             num = (BigUint::from(A_PRIMA) * num + BigUint::from(C_PRIMA)) % BigUint::from(M_PRIMA);
             if num == first_number { break }
         }

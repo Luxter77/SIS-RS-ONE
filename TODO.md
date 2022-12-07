@@ -2,8 +2,8 @@
 
 ## Maybe
 
-[ ] Add a stop & resume system.
-[ ] Add CLI parameters like seed and skip to n-th
+[x] Add a stop & resume system.
+[x] Add CLI parameters like seed and skip to n-th
 [ ] Add TOR sockets ...?
 
 ## Look at this funny cat
