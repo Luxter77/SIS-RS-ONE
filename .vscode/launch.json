@@ -1,0 +1,47 @@
+{
+    // Use IntelliSense para saber los atributos posibles.
+    // Mantenga el puntero para ver las descripciones de los existentes atributos.
+    // Para más información, visite: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'SIS-RS-ONE'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=SIS-RS-ONE",
+                    "--package=SIS-RS-ONE"
+                ],
+                "filter": {
+                    "name": "SIS-RS-ONE",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "sourceLanguages": ["rust"]
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'SIS-RS-ONE'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=SIS-RS-ONE",
+                    "--package=SIS-RS-ONE"
+                ],
+                "filter": {
+                    "name": "SIS-RS-ONE",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "sourceLanguages": ["rust"]
+        }
+    ]
+}
