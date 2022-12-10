@@ -5,16 +5,16 @@ use std::sync::{Mutex, Arc};
 use std::fs::OpenOptions;
 use std::time::Duration;
 use std::net::Ipv4Addr;
-use std::{thread, vec};
+use std::{thread, vec, u128};
 use std::io::Write;
 use std::fs::File;
 use std::io;
 
 
+use queues::{Queue, IsQueue};
 use pad::{PadStr, Alignment};
 use dns_lookup::lookup_addr;
 use num_bigint::BigUint;
-use queues::{Queue, IsQueue};
 use rand::Rng;
 
 static MAX_IIP:    u128 = 4294967295u128; // 255.255.255.255
@@ -26,105 +26,203 @@ static A_PRIMA: u128 = 273u128;
 static C_PRIMA: u128 = 2147483655u128;
 static M_PRIMA: u128 = LAST_NUMBR;
 
-static CORES:       usize = 16;
-static QUEUE_LIMIT: usize = CORES * 20;
+static CORES:       usize = 4;
+static QUEUE_LIMIT: usize = CORES * 5;
 
 static OUT_FILE_NAME: &str = "RESOLVED.csv";
 
 static SLEEP_TIME: u64 = 10;
 
+#[derive(Clone)]
+#[derive(Debug)]
+enum MessageToCheck {
+    EmptyQueue,
+    ToCheck(u128, BigUint),
+    End,
+}
+
+#[derive(Clone)]
+#[derive(Debug)]
+enum MessageToWrite {
+    EmptyQueue,
+    ToWrite(String, String),
+    End,
+}
+
 fn check_reserved(num: BigUint) -> bool {
     if num > BigUint::from(MAX_IIP) {
-        return true;
-    }
+        return false;
+    };
 
     for (start, end) in RESERVED_RANGES {
         if (BigUint::from(start) <= num) && (num <= BigUint::from(end)) {
-            return true;
-        }
-    }
+            return false;
+        };
+    };
 
-    return false;
+    return true;
 }
 
-fn process(num: BigUint, count: u128, out_queue: Arc<Mutex<Queue<(String, String)>>>) {
-    let mut msg:    String = String::new();
+fn process(num: BigUint, count: u128, out_queue: Arc<Mutex<Queue<MessageToWrite>>>) {
+    let (c, p)  = (count, (count as f32) * 100.0f32 / (LAST_NUMBR as f32));
 
-    #[allow(unused_mut)]
-    #[allow(unused_variables)]
-    let mut snum:   String = String::new();
-    
-    let     rech:   bool;
-    let     c:      u128;
-    let     p:      f32;
-
-    (c, p)  = (count, (count as f32) * 100.0f32 / (LAST_NUMBR as f32));
-
-    #[cfg(debug_assertions)]
-    snum.push_str(&num.clone().to_string().pad_to_width_with_alignment(15, Alignment::Right));
-
-    rech = check_reserved(num.clone());
-    
-    if rech {
-        msg.push_str("IP!");
-    } else {
-        msg.push_str("REJECTED!");
-    }
-
-    if rech {
+    if check_reserved(num.clone()) {
         let ip:     Ipv4Addr = Ipv4Addr::from(num.to_string().parse::<u32>().unwrap());
         let sip:    String   = ip.clone().to_string().pad_to_width_with_alignment(15, Alignment::Right);
         let ipn:    String   = lookup_addr(&ip.into()).unwrap();
-
+        
         if ipn != ip.to_string() {
-            println!("{}", format!("[{p:>15}][{a:>10}/{t}][IP: {b:>15}][DNS: {d}]", a=c, p=p, t=LAST_NUMBR, b=sip, d=ipn));
-            out_queue.lock().unwrap().add((ip.to_string(), ipn.clone())).unwrap();
+            println!("{}", format!("[{p:>17}][{a:>10}/{t}][IP: {b:>15}][DNS: {d}]", a=c, p=p, t=LAST_NUMBR, b=sip, d=ipn));
+            out_queue.lock().unwrap().add(MessageToWrite::ToWrite(ip.to_string(), ipn.clone()) ).unwrap();
         } else {
             #[cfg(debug_assertions)]
-            println!("{}", format!("[{p:>15}][{a:>10}/{t}][IP: {b:>15}][IPN: {d}]", a=c, p=p, t=LAST_NUMBR, b=sip, d=ipn));
+            println!("{}", format!("[{p:>17}][{a:>10}/{t}][IP: {b:>15}][IPN: {d}]", a=c, p=p, t=LAST_NUMBR, b=sip, d=ipn));
         }
     } else {
-        #[cfg(debug_assertions)]
-        println!("{}", format!("[{p:>15}][{a:>10}/{t}][IP: {b:>15}][MSG: {c}]", a=c, p=p, t=LAST_NUMBR, b=snum, c=msg));
-    }
+        // #[cfg(debug_assertions)]
+        // println!("{}", format!("[{p:>17}][{a:>10}/{t}][IP: {b:>15}][MSG: REJECTED!]", a=c, p=p, t=LAST_NUMBR, b=num.clone().to_string().pad_to_width_with_alignment(15, Alignment::Right)));
+    };
     io::stdout().flush().expect("\n\rUnable to flush stdout!");
 }
 
-fn check_worker(queue: Arc<Mutex<Queue<(u128, BigUint)>>>, out_queue: Arc<Mutex<Queue<(String, String)>>>, stop_sig: Arc<Mutex<Vec<bool>>>) {
+fn check_worker(queue: Arc<Mutex<Queue<MessageToCheck>>>, out_queue: Arc<Mutex<Queue<MessageToWrite>>>, stop_sig: Arc<Mutex<Vec<bool>>>) {
     let mut pending: bool = false;
-    
+
     // logic too deepth for the compiler?
     // This will never get read, but the all knowing compiler insists...
     let mut iip:     BigUint = BigUint::from(0u128); 
-    let mut c:       u128    = 0u128;
+    let mut c:       u128    =               0u128;
 
     loop {
-        if let Ok((p_c, p_iip)) = queue.lock().unwrap().remove() {
-            iip     = p_iip;
-            c       = p_c;
-            pending = true;
-        }
+        if stop_sig.lock().unwrap()[0] { break };
+        
+        if let Ok( MessageToCheck::End ) = queue.lock().unwrap().peek() { break };
+        
+        if let Ok( MessageToCheck::ToCheck(p_c, p_iip) ) = queue.lock().unwrap().remove() {
+            (c, iip, pending) = (p_c.clone(), p_iip.clone(), true);
+        };
 
         if pending {
             process(iip.clone(), c.clone(), out_queue.clone());
             pending = false;
         } else {
+            sleep(Duration::from_millis(SLEEP_TIME * 3));
+        };
+
+        {
+            #[cfg(debug_assertions)]
+            println!("{}", format!("to_write queue size is currently: {} items long.", queue.lock().unwrap().size()));
+        };
+    };
+}
+
+fn write_worker(mut out_file: File, out_queue: Arc<Mutex<Queue<MessageToWrite>>>, stop_sig: Arc<Mutex<Vec<bool>>>) {
+    loop {
+        if let Ok( message ) = out_queue.lock().unwrap().remove() {
+            match message {
+                MessageToWrite::ToWrite(ip, host) => {
+                    writeln!(&mut out_file, "{a}, {b}", a=ip, b=host).expect("Can't write to out file!")
+                },
+                MessageToWrite::End => { break },
+                MessageToWrite::EmptyQueue => todo!(),
+            }
+        } else {
             if stop_sig.lock().unwrap()[0] { break };
-            sleep(Duration::from_millis(SLEEP_TIME));
-        }
+            sleep(Duration::from_millis(SLEEP_TIME * 10));
+        };
+    };
+}
+
+fn generate(generator_stop_signal: Arc<Mutex<Vec<bool>>>, to_check: Arc<Mutex<Queue<MessageToCheck>>>, mut skip: BigUint, mut num: BigUint) {
+    let mut c: u128 = 0;
+    let first_number: BigUint = num.clone();
+
+    loop { // Generates IIPs for the query worker threads
+        if generator_stop_signal.lock().unwrap()[0] { break };
+
+        let can_go: bool = to_check.lock().unwrap().size() < QUEUE_LIMIT * 10;
+
+        if can_go {
+            c += 1;
+            
+            if skip == BigUint::from(0u128) {
+                to_check.lock().unwrap().add( MessageToCheck::ToCheck(c, num.clone()) ).unwrap();
+            } else { 
+                skip -= BigUint::from(1u128);
+            }
+
+            num = (BigUint::from(A_PRIMA) * num + BigUint::from(C_PRIMA)) % BigUint::from(M_PRIMA);
+            
+            if num == first_number {
+                println!("We went all the way arround!!!1!!11!1one!!1!111");
+                break;
+            };
+
+            {           
+                #[cfg(debug_assertions)]
+                println!("{}", format!("to_check queue size is currently: {} items long.", to_check.lock().unwrap().size()));
+            };
+        } else {
+            sleep(Duration::from_secs(SLEEP_TIME));
+        };
+    };
+
+    to_check.lock().unwrap().add( MessageToCheck::End ).unwrap();
+}
+
+#[cfg(debug_assertions)]
+fn display_update(display_stop_signal: Arc<Mutex<Vec<bool>>>) {
+    loop {
+        if display_stop_signal.lock().unwrap()[0] { break }
+        sleep(Duration::from_secs_f32(0.1));
+        io::stdout().flush().expect("\n\rUnable to flush stdout!");
     }
 }
 
-fn write_worker(mut out_file: File, out_queue: Arc<Mutex<Queue<(String, String)>>>, stop_sig: Arc<Mutex<Vec<bool>>>) {
-    loop {
-        while let Ok((ip, host)) = out_queue.lock().unwrap().remove() {
-            writeln!(&mut out_file, "{a}, {b}", a=ip, b=host).expect("Can't write to out file!");
-        }
-        if stop_sig.lock().unwrap()[1] { break }
-        sleep(Duration::from_millis(SLEEP_TIME * 2));
-    }
+fn display_status(display_stop_signal: Arc<Mutex<Vec<bool>>>, generator_stop_signal: Arc<Mutex<Vec<bool>>>, queryer_stop_signal: Arc<Mutex<Vec<bool>>>, writer_stop_signal: Arc<Mutex<Vec<bool>>>, to_write: Arc<Mutex<Queue<MessageToWrite>>>, to_check: Arc<Mutex<Queue<MessageToCheck>>>) {
+    
+    let mut stop_signal_status: [bool;  3];
+    let mut queue_sizes:        [usize; 2];
+    let mut last_items:         (MessageToCheck, MessageToWrite);
 
-    drop(out_file);
+
+    loop {
+        {
+            stop_signal_status = [
+                generator_stop_signal.lock().unwrap()[0],
+                queryer_stop_signal.lock().unwrap()[0],
+                writer_stop_signal.lock().unwrap()[0],
+            ];
+        };
+
+        {
+            let inquee = to_check.lock().unwrap(); 
+            let outqueue = to_write.lock().unwrap();
+
+            queue_sizes = [
+                inquee.size(),
+                outqueue.size(),
+            ];
+
+            last_items = (
+                match inquee.peek() {
+                    Ok(message) => { message },
+                    Err(_) => { MessageToCheck::EmptyQueue },
+                },
+                match outqueue.peek() {
+                    Ok(message) => { message },
+                    Err(_) => { MessageToWrite::EmptyQueue },
+                },
+            );
+        };
+
+        println!("{}", format!("signal status: {:?}; queue sizes: {:?}; last times: {:?}", stop_signal_status, queue_sizes, last_items));
+        io::stdout().flush().expect("\n\rUnable to flush stdout!");
+
+        if display_stop_signal.lock().unwrap()[0] { break };
+
+        sleep(Duration::from_secs_f32(0.3));
+    };
 }
 
 fn main() {
@@ -136,18 +234,15 @@ fn main() {
     
     let     b:         &std::path::Path                  = std::path::Path::new(OUT_FILE_NAME);
     
-    let     to_write:  Arc<Mutex<Queue<(String, String)>>> = Arc::new(Mutex::new(Queue::new()));
-    let     to_check:  Arc<Mutex<Queue<(u128, BigUint)>>>          = Arc::new(Mutex::new(Queue::new()));
+    let     to_write:  Arc<Mutex<Queue<MessageToWrite>>> = Arc::new(Mutex::new(Queue::new()));
+    let     to_check:  Arc<Mutex<Queue<MessageToCheck>>> = Arc::new(Mutex::new(Queue::new()));
 
-    let     done: Arc<Mutex<Vec<bool>>> = Arc::new(Mutex::new(vec![
-        false, // Generation
-        false, // Process
-    ]));
-    
-    let mut c: u128 = 0;
+    let     generator_stop_signal:  Arc<Mutex<Vec<bool>>> = Arc::new(Mutex::new(vec![false]));
+    let     queryer_stop_signal:    Arc<Mutex<Vec<bool>>> = Arc::new(Mutex::new(vec![false]));
+    let     writer_stop_signal:     Arc<Mutex<Vec<bool>>> = Arc::new(Mutex::new(vec![false]));
+    let     display_stop_signal:    Arc<Mutex<Vec<bool>>> = Arc::new(Mutex::new(vec![false]));
 
     //parse cli args
-    
     if let Some(r_seed) = std::env::args().nth(1) {
         num = r_seed.parse().expect("Invalid Seed (seed must be an unsinged int)")
     };
@@ -156,14 +251,52 @@ fn main() {
         skip = r_skip.parse().expect("Invalid skip number (skip number must be an unsinged int)");
     };
 
+    {
+        let cc_counter: Arc<Mutex<Vec<usize>>> = Arc::new(Mutex::new(vec![0usize]));
+        
+        let cc_generator_stop_signal = generator_stop_signal.clone(); 
+        let cc_queryer_stop_signal   = queryer_stop_signal.clone(); 
+        let cc_writer_stop_signal    = writer_stop_signal.clone();
 
-    println!("Starting threads!");
+        let cc_display_stop_signal   = display_stop_signal.clone();
+        
+        ctrlc::set_handler(move || {
+            let n = cc_counter.lock().unwrap()[0];            
+            
+            println!("{}", match n {
+                0 => {
+                    cc_generator_stop_signal.lock().unwrap()[0] = true;
+                    "Keyboard Interrupt recieved, signaling generator thread to stop."
+                },
+                1 => {
+                    cc_queryer_stop_signal.lock().unwrap()[0]   = true;                    
+                    "Keyboard Interrupt recieved, signaling query threads to stop."
+                },
+                2 => {
+                    cc_writer_stop_signal.lock().unwrap()[0]    = true;
+                    "Keyboard Interrupt recieved, signaling writer thread to stop!"
+                },
+                3 => {
+                    cc_display_stop_signal.lock().unwrap()[0]   = true;
+                    "Keyboard Interrupt recieved, signaling display thread to stop!"
+                },
+                _ => {                
+                    "Keyboard Interrupt recieved, signaling no one, lol."
+                },
+            } );            
 
-    let mut threads: Vec<thread::JoinHandle<()>> = Vec::new();
-    let write_thread: JoinHandle<()>;
+            cc_counter.lock().unwrap()[0] = n + 1;
+        }).expect("Error setting Ctrl-C handler");
+    };
+    
+    let mut worker_threads:    Vec<thread::JoinHandle<()>> = Vec::new();
+    
+    let generator_thread:  JoinHandle<()>;
+    let display_thread:    JoinHandle<()>;
+    let write_thread:      JoinHandle<()>;
 
     let orig_hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |panic_info| {
+    std::panic::set_hook(Box::new(move | panic_info | {
         orig_hook(panic_info);
         std::process::exit(1);
     }));
@@ -174,53 +307,104 @@ fn main() {
     } else {
         out_file = OpenOptions::new().create(true).write(true).open(b.clone()).expect("Could not create output file!");
         println!("{}", format!("Created new file: {}", b.display()));
-        to_write.lock().unwrap().add((String::from("IP"), String::from("HOSTNAME"))).unwrap();
-    }
-
-    {
-        let (queuee, sig) = (to_write.clone(), done.clone());
-        write_thread = thread::spawn(move || {
-            sleep(Duration::from_secs(3));
-            write_worker(out_file, queuee, sig);
-        });
-    }
-
-    for _ in 0..(CORES * 4) {
-        let (_tc, oq_, ss_) = (to_check.clone(), to_write.clone(), done.clone());
-        threads.push(thread::spawn(move || {
-            sleep(Duration::from_secs(2));
-            check_worker(_tc, oq_, ss_)
-        }));
-    }
+        to_write.lock().unwrap().add(MessageToWrite::ToWrite(String::from("IP"), String::from("HOSTNAME"))).unwrap();
+    };
 
     println!("{}", format!("The seed is {}", num));
 
+    println!("Starting threads!");
+    
+    { // Starts write worker thread
+        let (queuee, sig) = (to_write.clone(), writer_stop_signal.clone());
+        write_thread = thread::Builder::new().name("WriterThread".into()).spawn(move || {
+            sleep(Duration::from_secs(3));
+            write_worker(out_file, queuee, sig);
+        }).unwrap();
+    };
+
+    for n in 0..(CORES * 4) { // Starts query worker threads
+        let (_tc, oq_, ss_) = (to_check.clone(), to_write.clone(), queryer_stop_signal.clone());
+        worker_threads.push(thread::Builder::new().name(format!("QueryerThread#{}", n)).spawn(move || {
+            sleep(Duration::from_secs(2));
+            check_worker(_tc, oq_, ss_);
+        }).unwrap());
+    };
+    
     num = (BigUint::from(A_PRIMA) * num + BigUint::from(C_PRIMA)) % BigUint::from(M_PRIMA);
 
-    let first_number = num.clone();
-    
-    loop {
-        if to_check.lock().unwrap().size() < QUEUE_LIMIT * 10 {
-            c += 1;
-            if skip == BigUint::from(0u128) {
-                to_check.lock().unwrap().add((c, num.clone())).unwrap();
-            } else {
-                skip -= BigUint::from(1u128);
-            }
-            num = (BigUint::from(A_PRIMA) * num + BigUint::from(C_PRIMA)) % BigUint::from(M_PRIMA);
-            if num == first_number { break }
-        }
-    }
+    {
+        #[cfg(debug_assertions)]
+        println!("{}", format!("first_number is: {}", num.clone()));
+    };
 
-    done.lock().unwrap()[0] = true;
+    {
+        let generator_stop_signal: Arc<Mutex<Vec<bool>>> = generator_stop_signal.clone();
+        let to_check: Arc<Mutex<Queue<MessageToCheck>>>  = to_check.clone();
+        let skip: BigUint                                = skip.clone();
+        let num: BigUint                                 = num.clone();
 
-    while let Some(cur_thread) = threads.pop() {
+        generator_thread = thread::Builder::new().name("GeneratorThread".into()).spawn(move || {
+            sleep(Duration::from_millis(SLEEP_TIME));
+            generate(generator_stop_signal, to_check, skip, num);
+        }).unwrap();
+    };
+
+    {
+        let d_generator_stop_signal: Arc<Mutex<Vec<bool>>> = generator_stop_signal.clone();
+        let d_queryer_stop_signal:   Arc<Mutex<Vec<bool>>> = queryer_stop_signal.clone();
+        let d_writer_stop_signal:    Arc<Mutex<Vec<bool>>> = writer_stop_signal.clone();
+        
+        let display_stop_signal:     Arc<Mutex<Vec<bool>>> = display_stop_signal.clone();
+
+        #[cfg(debug_assertions)]
+        let display_stop_signal2:    Arc<Mutex<Vec<bool>>> = display_stop_signal.clone();
+        
+        let d_to_write:              Arc<Mutex<Queue<MessageToWrite>>> = to_write.clone();
+        let d_to_check:              Arc<Mutex<Queue<MessageToCheck>>> = to_check.clone();
+
+        
+        display_thread = thread::Builder::new().name("DisplayThread".into()).spawn(move || {
+            display_status(display_stop_signal, d_generator_stop_signal, d_queryer_stop_signal, d_writer_stop_signal, d_to_write, d_to_check);
+        }).unwrap();
+
+        {
+            #[cfg(debug_assertions)]
+            thread::Builder::new().name("DisplayUpdateThread".into()).spawn(move || {
+                display_update(display_stop_signal2);
+            }).unwrap();
+        };
+    };
+
+    generator_thread.join().unwrap();
+
+    {
+        #[cfg(debug_assertions)]
+        println!("We got hereeeeeeeeee");
+    };
+
+    while let Some(cur_thread) = worker_threads.pop() {
+        {
+            #[cfg(debug_assertions)]
+            println!("{}", format!("waiting for worker thread: {:?}.", cur_thread.thread().id()));
+        };
         cur_thread.join().unwrap();
-    }
+    };
 
-    done.lock().unwrap()[1] = true;
+    to_write.lock().unwrap().add( MessageToWrite::End ).unwrap();
+    
+    {
+        #[cfg(debug_assertions)]
+        println!("waiting for writer thread.");
+    };
 
     write_thread.join().unwrap();
+
+    {
+        display_stop_signal.lock().unwrap()[0] = true;
+        display_thread.join().unwrap();
+    };
+
+    println!("End.");
 
 }
 
