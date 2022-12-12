@@ -14,6 +14,7 @@ use std::io::Write;
 use std::fs::File;
 use std::io;
 
+#[warn(unused_imports)]
 #[cfg(feature = "trust-dns")]
 use trust_dns_resolver::{Resolver, config::{ResolverConfig, ResolverOpts, NameServerConfig, Protocol}};
 
@@ -137,16 +138,16 @@ fn check_worker(queue: Arc<Mutex<Queue<MessageToCheck>>>, out_queue: Arc<Mutex<Q
                 
                 for ipn in lipn {
                     if ipn != ip.to_string() {
-                        println!("{}", format!("[{p:>17}][{a:>10}/{t}][IP: {b:>15}][DNS: {d}]", a=c, p=p, t=LAST_NUMBR, b=sip, d=ipn));
+                        println!("{}", format!("[{p:>17}%][{a:>10}/{t}][IP: {b:>15}][DNS: {d}]", a=c, p=p, t=LAST_NUMBR, b=sip, d=ipn));
                         out_queue.lock().unwrap().add(MessageToWrite::ToWrite(ip.to_string(), ipn) ).unwrap();
                     } else {
                         #[cfg(debug_assertions)]
-                        println!("{}", format!("[{p:>17}][{a:>10}/{t}][IP: {b:>15}][IPN: {d}]", a=c, p=p, t=LAST_NUMBR, b=sip, d=ipn));
+                        println!("{}", format!("[{p:>17}%][{a:>10}/{t}][IP: {b:>15}][IPN: {d}]", a=c, p=p, t=LAST_NUMBR, b=sip, d=ipn));
                     };
                 };
             } else {
                 // #[cfg(debug_assertions)]
-                // println!("{}", format!("[{p:>17}][{a:>10}/{t}][IP: {b:>15}][MSG: REJECTED!]", a=c, p=p, t=LAST_NUMBR, b=iip.clone().to_string().pad_to_width_with_alignment(15, Alignment::Right)));
+                // println!("{}", format!("[{p:>17}%][{a:>10}/{t}][IP: {b:>15}][MSG: REJECTED!]", a=c, p=p, t=LAST_NUMBR, b=iip.clone().to_string().pad_to_width_with_alignment(15, Alignment::Right)));
             };
             io::stdout().flush().expect("\n\rUnable to flush stdout!");
             pending = false;
@@ -200,6 +201,7 @@ fn generate(generator_stop_signal: Arc<Mutex<Vec<bool>>>, to_check: Arc<Mutex<Qu
             
             if num == first_number {
                 println!("We went all the way arround!!!1!!11!1one!!1!111");
+                println!("{}", format!("The last number was => {}\nIt appeared after {} iterations.", num, c));
                 break;
             };
 
