@@ -1,17 +1,24 @@
+#![allow(unreachable_code)]
 #![allow(non_snake_case)]
 
 use std::thread::{sleep, JoinHandle};
 use std::sync::{Mutex, Arc};
 use std::fs::OpenOptions;
 use std::time::Duration;
-use std::net::Ipv4Addr;
+
+#[allow(unused_imports)]
+use std::net::{SocketAddr, Ipv4Addr, IpAddr};
+
 use std::{thread, vec, u128};
 use std::io::Write;
 use std::fs::File;
 use std::io;
 
 #[cfg(feature = "trust-dns")]
-use trust_dns_resolver::Resolver;
+use trust_dns_resolver::{Resolver, config::{ResolverConfig, ResolverOpts, NameServerConfig, Protocol}};
+
+#[allow(unused_imports)]
+use human_sort::compare;
 
 use queues::{Queue, IsQueue};
 use pad::{PadStr, Alignment};
@@ -28,7 +35,7 @@ static A_PRIMA: u128 = 273u128;
 static C_PRIMA: u128 = 2147483655u128;
 static M_PRIMA: u128 = LAST_NUMBR;
 
-static CORES:       usize = 4;
+static CORES:       usize = 16;
 static QUEUE_LIMIT: usize = CORES * 5;
 
 static OUT_FILE_NAME: &str = "RESOLVED.csv";
@@ -81,7 +88,7 @@ fn check_worker(queue: Arc<Mutex<Queue<MessageToCheck>>>, out_queue: Arc<Mutex<Q
     let mut p:       f32;
 
     #[cfg(feature = "trust-dns")]
-    let resolver: Resolver = Resolver::default().unwrap();
+    let resolver: trust_dns_resolver::Resolver = trust_dns_resolver::Resolver::default().unwrap();
 
     loop {
         if stop_sig.lock().unwrap()[0] { break };
@@ -114,8 +121,19 @@ fn check_worker(queue: Arc<Mutex<Queue<MessageToCheck>>>, out_queue: Arc<Mutex<Q
                         #[cfg(not(debug_assertions))] {
                             lipn.extend(res.iter().map( |nam| -> String { nam.to_ascii() } ).collect::<std::collections::HashSet<_>>());
                         }
+                        #[cfg(feature = "host-resolv")]  {
+                            if lipn.len() > 0 {
+                                let mut h_res_conf = ResolverConfig::new();          
+                                h_res_conf.add_name_server(NameServerConfig::new(SocketAddr::new(IpAddr::V4(ip.clone()), 53), Protocol::default()));
+                                if let Ok(h_res) = Resolver::new(h_res_conf, ResolverOpts::default()).unwrap().reverse_lookup(std::net::IpAddr::V4(Ipv4Addr::from(iip.to_string().parse::<u32>().unwrap()))) {
+                                    lipn.extend(h_res.iter().map( |nam| -> String { nam.to_ascii() } ).collect::<std::collections::HashSet<_>>());
+                                };
+                            };
+                        };
                     };
                 };
+                
+                lipn.sort_by(| a, b | human_sort::compare(a.as_str(), b.as_str()));
                 
                 for ipn in lipn {
                     if ipn != ip.to_string() {
@@ -308,12 +326,12 @@ fn main() {
     };
 
     {
-        let cc_ctr = Arc::new(Mutex::new(vec![0u8]));
+        let cc_ctr: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(vec![0u8]));
         
-        let cc_gen_st_sg = generator_stop_signal.clone(); 
-        let cc_qry_st_sg = queryer_stop_signal.clone(); 
-        let cc_wrt_st_sg = writer_stop_signal.clone();
-        let cc_dsp_st_sg = display_stop_signal.clone();
+        let cc_gen_st_sg: Arc<Mutex<Vec<bool>>> = generator_stop_signal.clone(); 
+        let cc_qry_st_sg: Arc<Mutex<Vec<bool>>> = queryer_stop_signal.clone(); 
+        let cc_wrt_st_sg: Arc<Mutex<Vec<bool>>> = writer_stop_signal.clone();
+        let cc_dsp_st_sg: Arc<Mutex<Vec<bool>>> = display_stop_signal.clone();
         
         ctrlc::set_handler( move || {
             ctrl_c_handler(

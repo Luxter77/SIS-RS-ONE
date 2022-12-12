@@ -8,6 +8,7 @@ version = "0.1.1"
 dependencies = [
  "ctrlc",
  "dns-lookup",
+ "human-sort",
  "num-bigint",
  "pad",
  "queues",
@@ -175,6 +176,12 @@ dependencies = [
  "match_cfg",
  "winapi",
 ]
+
+[[package]]
+name = "human-sort"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "140a09c9305e6d5e557e2ed7cbc68e05765a7d4213975b87cb04920689cc6219"
 
 [[package]]
 name = "idna"
