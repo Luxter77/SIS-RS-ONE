@@ -193,7 +193,7 @@ fn write_worker(mut out_file: File, out_queue: Arc<Mutex<Queue<MessageToWrite>>>
     };
 }
 
-fn generate(generator_stop_signal: Arc<Mutex<Vec<bool>>>, to_check: Arc<Mutex<Queue<MessageToCheck>>>, mut skip: BigUint, mut num: BigUint, mut last: BigUint) {
+fn generate(generator_stop_signal: Arc<Mutex<Vec<bool>>>, to_check: Arc<Mutex<Queue<MessageToCheck>>>, mut skip: BigUint, mut num: BigUint, last: BigUint) {
     let mut c: u128 = 0;
     
     let first_number: BigUint = num.clone();
