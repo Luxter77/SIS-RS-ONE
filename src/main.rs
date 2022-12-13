@@ -36,7 +36,7 @@ static A_PRIMA: u128 = 273u128;
 static C_PRIMA: u128 = 2147483655u128;
 static M_PRIMA: u128 = LAST_NUMBR;
 
-static CORES:       usize = 16;
+static CORES:       usize = 20;
 static QUEUE_LIMIT: usize = CORES * 5;
 
 static OUT_FILE_NAME: &str = "RESOLVED.csv";
@@ -63,6 +63,20 @@ enum MessageToWrite {
     End,
 }
 
+
+// Counts how many posible distinct numbers can this program generate (using current filters)
+pub fn count_posibilites() -> u128 {
+    let mut count: u128 = 0;
+    for (s, e) in RESERVED_RANGES {
+        count += e - s;
+    };
+    count -= NEXT_PRIME;
+
+    println!("{}", count);
+
+    return count;
+}
+    
 fn check_reserved(num: BigUint) -> bool {
     if num > BigUint::from(MAX_IIP) {
         return false;
@@ -179,8 +193,9 @@ fn write_worker(mut out_file: File, out_queue: Arc<Mutex<Queue<MessageToWrite>>>
     };
 }
 
-fn generate(generator_stop_signal: Arc<Mutex<Vec<bool>>>, to_check: Arc<Mutex<Queue<MessageToCheck>>>, mut skip: BigUint, mut num: BigUint) {
+fn generate(generator_stop_signal: Arc<Mutex<Vec<bool>>>, to_check: Arc<Mutex<Queue<MessageToCheck>>>, mut skip: BigUint, mut num: BigUint, mut last: BigUint) {
     let mut c: u128 = 0;
+    
     let first_number: BigUint = num.clone();
 
     loop { // Generates IIPs for the query worker threads
@@ -201,18 +216,24 @@ fn generate(generator_stop_signal: Arc<Mutex<Vec<bool>>>, to_check: Arc<Mutex<Qu
             
             if num == first_number {
                 println!("We went all the way arround!!!1!!11!1one!!1!111");
-                println!("{}", format!("The last number was => {}\nIt appeared after {} iterations.", num, c));
                 break;
             };
-
+            
+            if num == last {
+                println!("We reached the stipulated end!");
+                break;
+            }
+            
             {           
                 #[cfg(debug_assertions)]
                 println!("{}", format!("to_check queue size is currently: {} items long.", to_check.lock().unwrap().size()));
             };
         } else {
-            sleep(Duration::from_secs(SLEEP_TIME));
+            sleep(Duration::from_secs(SLEEP_TIME / 2));
         };
     };
+
+    println!("{}", format!("The last number was => {}\nIt appeared after {} iterations.", num, c));
 
     to_check.lock().unwrap().add( MessageToCheck::End ).unwrap();
 }
@@ -305,7 +326,9 @@ fn main() {
     let mut num:       BigUint                           = BigUint::from(rand::thread_rng().gen::<u128>());
 
     let mut skip:      BigUint                           = BigUint::from(0u128);
-
+    
+    let mut last:      BigUint                           = BigUint::from(LAST_NUMBR);
+    
     let     out_file:  File;
     
     let     b:         &std::path::Path                  = std::path::Path::new(OUT_FILE_NAME);
@@ -326,6 +349,12 @@ fn main() {
     if let Some(r_skip) = std::env::args().nth(2) {
         skip = r_skip.parse().expect("Invalid skip number (skip number must be an unsinged int)");
     };
+
+    if let Some(r_last) = std::env::args().nth(3) {
+        last = r_last.parse().expect("Invalid last number (last number must be an unsinged int)");
+    };
+
+    assert!(last > skip, "Last number must be greater than the number of skipped iterations.");
 
     {
         let cc_ctr: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(vec![0u8]));
@@ -389,10 +418,7 @@ fn main() {
     
     num = (BigUint::from(A_PRIMA) * num + BigUint::from(C_PRIMA)) % BigUint::from(M_PRIMA);
 
-    {
-        #[cfg(debug_assertions)]
-        println!("{}", format!("first_number is: {}", num.clone()));
-    };
+    println!("{}", format!("first number is: {}", num.clone()));
 
     {
         let generator_stop_signal: Arc<Mutex<Vec<bool>>> = generator_stop_signal.clone();
@@ -402,7 +428,7 @@ fn main() {
 
         generator_thread = thread::Builder::new().name("GeneratorThread".into()).spawn(move || {
             sleep(Duration::from_millis(SLEEP_TIME));
-            generate(generator_stop_signal, to_check, skip, num);
+            generate(generator_stop_signal, to_check, skip, num, last);
         }).unwrap();
     };
 
