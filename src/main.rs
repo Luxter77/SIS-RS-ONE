@@ -14,7 +14,7 @@ use std::io::Write;
 use std::fs::File;
 use std::io;
 
-#[warn(unused_imports)]
+#[allow(unused_imports)]
 #[cfg(feature = "trust-dns")]
 use trust_dns_resolver::{Resolver, config::{ResolverConfig, ResolverOpts, NameServerConfig, Protocol}};
 
