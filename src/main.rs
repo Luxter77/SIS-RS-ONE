@@ -206,7 +206,7 @@ fn write_worker(mut out_file: File, out_queue: Arc<Mutex<Queue<MessageToWrite>>>
     };
 }
 
-fn generate(to_check: Arc<Mutex<Queue<MessageToCheck>>>, mut skip: BigUint, mut num: BigUint, last: BigUint) -> (BigUint, u128) {
+fn generate(to_check: Arc<Mutex<Queue<MessageToCheck>>>, mut skip: BigUint, mut num: BigUint, last: BigUint, zip: BigUint, zip_flag: bool) -> (BigUint, u128) {
     let mut c: u128 = 0;
     
     let first_number: BigUint = num.clone();
@@ -219,10 +219,11 @@ fn generate(to_check: Arc<Mutex<Queue<MessageToCheck>>>, mut skip: BigUint, mut 
         if can_go {
             c += 1;
             
-            if skip == BigUint::from(0u128) {
+            if skip == BigUint::from(0u128) && !zip_flag {
                 to_check.lock().unwrap().add( MessageToCheck::ToCheck(c, num.clone()) ).unwrap();
-            } else { 
-                skip -= BigUint::from(1u128);
+            } else {
+                if zip_flag { if num == zip { zip_flag = false; }
+                } else { skip -= BigUint::from(1u128); }
             }
 
             num = (BigUint::from(A_PRIMA) * num + BigUint::from(C_PRIMA)) % BigUint::from(M_PRIMA);
@@ -317,7 +318,7 @@ fn launch_display_threads(d_to_write: Arc<Mutex<Queue<MessageToWrite>>>, d_to_ch
 }
 
 fn launch_generator_thread(to_check: Arc<Mutex<Queue<MessageToCheck>>>, skip: BigUint, num: BigUint, last: BigUint) -> JoinHandle<(BigUint, u128)> {
-    return thread::Builder::new().name("GeneratorThread".into()).spawn(move || { return generate(to_check, skip, num, last); }).unwrap();
+    return thread::Builder::new().name("GeneratorThread".into()).spawn(move || { return generate(to_check, skip, num, last, zip, zip_flag); }).unwrap();
 }
 
 fn launch_write_thread(queuee: Arc<Mutex<Queue<MessageToWrite>>>, out_file: File) -> JoinHandle<()> {
@@ -358,6 +359,9 @@ fn main() {
     
     let mut last:      BigUint                           = BigUint::from(LAST_NUMBR);
     
+    let mut zip:       BigUint                           = BigUint::from(0u128);
+    let mut zip_flag:  bool                              = false;
+
     let     c_last:    BigUint;
     let     num_last:  u128;
 
@@ -380,6 +384,12 @@ fn main() {
     if let Some(r_last) = std::env::args().nth(3) {
         last = r_last.parse().expect("Invalid last number (last number must be an unsinged int)");
     };
+
+    /// TODO: DOCMENT THIS ONE
+    if let Some(r_zip) = std::env::args().nth(4) {
+        zip      = BigUint::from(u32::from(r_zip.parse::<Ipv4Addr>().unwrap()));
+        zip_flag = true;
+    }
 
     assert!(last > skip, "Last number must be greater than the number of skipped iterations.");
 
@@ -416,8 +426,8 @@ fn main() {
     launch_worker_threads(&mut worker_threads, to_check.clone(), to_write.clone());
 
     write_thread     = launch_write_thread(to_write.clone(), out_file);
-    generator_thread = launch_generator_thread(to_check.clone(), skip.clone(), num.clone(), last);
     display_thread   = launch_display_threads(to_write.clone(), to_check.clone());
+    generator_thread = launch_generator_thread(to_check.clone(), skip.clone(), num.clone(), last, zip, zip_flag);
 
     (c_last, num_last) = generator_thread.join().unwrap();
     
