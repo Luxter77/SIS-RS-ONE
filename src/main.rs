@@ -206,7 +206,7 @@ fn write_worker(mut out_file: File, out_queue: Arc<Mutex<Queue<MessageToWrite>>>
     };
 }
 
-fn generate(to_check: Arc<Mutex<Queue<MessageToCheck>>>, mut skip: BigUint, mut num: BigUint, last: BigUint, zip: BigUint, zip_flag: bool) -> (BigUint, u128) {
+fn generate(to_check: Arc<Mutex<Queue<MessageToCheck>>>, mut skip: BigUint, mut num: BigUint, last: BigUint, zip: BigUint, mut zip_flag: bool) -> (BigUint, u128) {
     let mut c: u128 = 0;
     
     let first_number: BigUint = num.clone();
@@ -317,7 +317,7 @@ fn launch_display_threads(d_to_write: Arc<Mutex<Queue<MessageToWrite>>>, d_to_ch
     return display_thread;
 }
 
-fn launch_generator_thread(to_check: Arc<Mutex<Queue<MessageToCheck>>>, skip: BigUint, num: BigUint, last: BigUint) -> JoinHandle<(BigUint, u128)> {
+fn launch_generator_thread(to_check: Arc<Mutex<Queue<MessageToCheck>>>, skip: BigUint, num: BigUint, last: BigUint, zip: BigUint, zip_flag: bool) -> JoinHandle<(BigUint, u128)> {
     return thread::Builder::new().name("GeneratorThread".into()).spawn(move || { return generate(to_check, skip, num, last, zip, zip_flag); }).unwrap();
 }
 
