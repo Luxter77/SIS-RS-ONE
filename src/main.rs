@@ -452,7 +452,7 @@ fn main() {
 
 }
 
-/// from https://github.com/robertdavidgraham/masscan/blob/master/data/exclude.conf
+/// from <https://github.com/robertdavidgraham/masscan/blob/master/data/exclude.conf>
 /// and others, we really dont want these to be angry at us...
 /// also private networks lol
 pub static NO_GO_RANGES: [(u128, u128); 334] = [
