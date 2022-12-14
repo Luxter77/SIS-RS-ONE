@@ -106,7 +106,7 @@ fn trust_dns_lookup_addr(lipn: &mut Vec<String>, ip: &Ipv4Addr, resolver: &Resol
             if lipn.len() > 0 {
                 let mut h_res_conf = ResolverConfig::new();          
                 h_res_conf.add_name_server(NameServerConfig::new(SocketAddr::new(IpAddr::V4(ip.clone()), 53), Protocol::default()));
-                if let Ok(h_res) = Resolver::new(h_res_conf, ResolverOpts::default()).unwrap().reverse_lookup(std::net::IpAddr::V4(Ipv4Addr::from(iip.to_string().parse::<u32>().unwrap()))) {
+                if let Ok(h_res) = Resolver::new(h_res_conf, ResolverOpts::default()).unwrap().reverse_lookup(std::net::IpAddr::V4(ip.to_owned())) {
                     lipn.extend(h_res.iter().map( |nam| -> String { nam.to_ascii() } ).collect::<std::collections::HashSet<_>>());
                 };
             };
