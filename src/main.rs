@@ -91,6 +91,29 @@ fn check_reserved(num: BigUint) -> bool {
     return true;
 }
 
+fn trust_dns_lookup_addr(lipn: &mut Vec<String>, ip: &Ipv4Addr, resolver: &Resolver) {
+    if let Ok(res) = resolver.reverse_lookup(std::net::IpAddr::V4(ip.to_owned())) {
+        #[cfg(debug_assertions)] {
+            let ips: Vec<String> = res.iter().map( |nam| -> String { nam.to_ascii() } ).collect();
+            if ips.len() > 1 { println!("{}", format!("IP HAS MORE THAN ONE ADRESS! -> {:?}", ips)); };
+            lipn.extend(ips.iter().map( move | nam: &String | nam.to_owned() ).collect::<std::collections::HashSet<_>>());
+        }
+        #[cfg(not(debug_assertions))] {
+            lipn.extend(res.iter().map( |nam| -> String { nam.to_ascii() } ).collect::<std::collections::HashSet<_>>());
+        }
+        #[cfg(feature = "host-resolv")]  {
+            if lipn.len() > 0 {
+                let mut h_res_conf = ResolverConfig::new();          
+                h_res_conf.add_name_server(NameServerConfig::new(SocketAddr::new(IpAddr::V4(ip.clone()), 53), Protocol::default()));
+                if let Ok(h_res) = Resolver::new(h_res_conf, ResolverOpts::default()).unwrap().reverse_lookup(std::net::IpAddr::V4(Ipv4Addr::from(iip.to_string().parse::<u32>().unwrap()))) {
+                    lipn.extend(h_res.iter().map( |nam| -> String { nam.to_ascii() } ).collect::<std::collections::HashSet<_>>());
+                };
+            };
+        };
+    };
+}
+    
+
 
 fn check_worker(queue: Arc<Mutex<Queue<MessageToCheck>>>, out_queue: Arc<Mutex<Queue<MessageToWrite>>>, stop_sig: Arc<Mutex<Vec<bool>>>) {
     let mut pending: bool = false;
@@ -127,25 +150,7 @@ fn check_worker(queue: Arc<Mutex<Queue<MessageToCheck>>>, out_queue: Arc<Mutex<Q
                     lipn.push(lookup_addr(&ip.into()).unwrap());
                 } else {
                     #[cfg(feature = "trust-dns")]
-                    if let Ok(res) = resolver.reverse_lookup(std::net::IpAddr::V4(ip.to_owned())) {
-                        #[cfg(debug_assertions)] {
-                            let ips: Vec<String> = res.iter().map( |nam| -> String { nam.to_ascii() } ).collect();
-                            if ips.len() > 1 { println!("{}", format!("IP HAS MORE THAN ONE ADRESS! -> {:?}", ips)); };
-                            lipn.extend(ips.iter().map( move | nam: &String | nam.to_owned() ).collect::<std::collections::HashSet<_>>());
-                        }
-                        #[cfg(not(debug_assertions))] {
-                            lipn.extend(res.iter().map( |nam| -> String { nam.to_ascii() } ).collect::<std::collections::HashSet<_>>());
-                        }
-                        #[cfg(feature = "host-resolv")]  {
-                            if lipn.len() > 0 {
-                                let mut h_res_conf = ResolverConfig::new();          
-                                h_res_conf.add_name_server(NameServerConfig::new(SocketAddr::new(IpAddr::V4(ip.clone()), 53), Protocol::default()));
-                                if let Ok(h_res) = Resolver::new(h_res_conf, ResolverOpts::default()).unwrap().reverse_lookup(std::net::IpAddr::V4(Ipv4Addr::from(iip.to_string().parse::<u32>().unwrap()))) {
-                                    lipn.extend(h_res.iter().map( |nam| -> String { nam.to_ascii() } ).collect::<std::collections::HashSet<_>>());
-                                };
-                            };
-                        };
-                    };
+                    trust_dns_lookup_addr(&mut lipn, &ip, &resolver);
                 };
                 
                 lipn.sort_by(| a, b | human_sort::compare(a.as_str(), b.as_str()));
