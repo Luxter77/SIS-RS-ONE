@@ -358,6 +358,9 @@ fn main() {
     
     let mut last:      BigUint                           = BigUint::from(LAST_NUMBR);
     
+    let     c_last:    BigUint;
+    let     num_last:  u128;
+
     let     out_file:  File;
     
     let     b:         &std::path::Path                  = std::path::Path::new(OUT_FILE_NAME);
@@ -406,7 +409,7 @@ fn main() {
     println!("{}", format!("The seed is {}", num));
         
     num = (BigUint::from(A_PRIMA) * num + BigUint::from(C_PRIMA)) % BigUint::from(M_PRIMA);
-    println!("{}", format!("first number is: {}", num.clone()));    
+    println!("{}", format!("first number is: {}", num.clone()));
     
     println!("Starting threads!");
 
@@ -416,11 +419,8 @@ fn main() {
     generator_thread = launch_generator_thread(to_check.clone(), skip.clone(), num.clone(), last);
     display_thread   = launch_display_threads(to_write.clone(), to_check.clone());
 
-    {
-        let (c, num) = generator_thread.join().unwrap();
-        println!("{}", format!("The last number was => {}\nIt appeared after {} iterations.", c, num));
-    };
-
+    (c_last, num_last) = generator_thread.join().unwrap();
+    
     #[cfg(debug_assertions)]
     println!("We got hereeeeeeeeee");
     
@@ -430,19 +430,23 @@ fn main() {
         
         cur_thread.join().unwrap();
     };
-
+    
     to_write.lock().unwrap().add( MessageToWrite::End ).unwrap();
     
     #[cfg(debug_assertions)]
     println!("waiting for writer thread.");
-
+    
     write_thread.join().unwrap();
-
+    
     DISPLAY___STOP_SIGNAL.store(true, Ordering::Relaxed);
     
     if let Some(display_thread) = display_thread {
         display_thread.join().unwrap();
     };
+    
+    println!("{}", format!("We started @ {} Iterations",       skip));
+    println!("{}", format!("The last number was => {}",        c_last));
+    println!("{}", format!("It appeared after {} iterations.", num_last));
 
     println!("End.");
 
