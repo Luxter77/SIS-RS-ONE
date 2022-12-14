@@ -18,6 +18,7 @@ pad = "0.1.6"
 [features]
 trust-dns = ["dep:trust-dns-resolver"]
 host-resolv = ["trust-dns"]
-features = ["trust-dns"]
+
+default = ["trust-dns"]
 
 # TODO: tor-resolver = ["trust-dns"]

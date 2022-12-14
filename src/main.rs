@@ -1,6 +1,7 @@
 #![allow(unreachable_code)]
 #![allow(non_snake_case)]
 
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::thread::{sleep, JoinHandle};
 use std::sync::{Mutex, Arc};
 use std::fs::OpenOptions;
@@ -9,7 +10,7 @@ use std::time::Duration;
 #[allow(unused_imports)]
 use std::net::{SocketAddr, Ipv4Addr, IpAddr};
 
-use std::{thread, vec, u128};
+use std::{thread, u128};
 use std::io::Write;
 use std::fs::File;
 use std::io;
@@ -27,23 +28,32 @@ use dns_lookup::lookup_addr;
 use num_bigint::BigUint;
 use rand::Rng;
 
-static MAX_IIP:    u128 = 4294967295u128; // 255.255.255.255
+const MAX_IIP:        u128  = 4294967295u128; // 255.255.255.255
+const NEXT_PRIME:     u128  = 4294967311u128; // 4294967295 is the next prime to 4294967295 (MAX_IIP)
+const LAST_NUMBR:     u128  = NEXT_PRIME + 1u128; // 4294967295 + 1
+const A_PRIMA:        u128  = 273u128;
+const C_PRIMA:        u128  = 2147483655u128;
+const M_PRIMA:        u128  = LAST_NUMBR;
+const CORES:          usize = 20;
+const QUEUE_LIMIT:    usize = CORES * 5;
+const OUT_FILE_NAME:  &str  = "RESOLVED.csv";
+const SLEEP_TIME:     u64   = 10;
+const USE_SYSTEM_DNS: bool  = !(cfg!(feature = "trust-dns"));
 
-static NEXT_PRIME: u128 = 4294967311u128; // 4294967295 is the next prime to 4294967295 (MAX_IIP)
-static LAST_NUMBR: u128 = NEXT_PRIME + 1u128; // 4294967295 + 1
+/// Stop signal for the thing that generates the numbers
+pub static GENERATOR_STOP_SIGNAL: AtomicBool = AtomicBool::new(false);
 
-static A_PRIMA: u128 = 273u128;
-static C_PRIMA: u128 = 2147483655u128;
-static M_PRIMA: u128 = LAST_NUMBR;
+/// Stop signal for the thing that performs the querys
+pub static QUERYER___STOP_SIGNAL: AtomicBool = AtomicBool::new(false);
 
-static CORES:       usize = 20;
-static QUEUE_LIMIT: usize = CORES * 5;
+/// Stop signal for the thing that writes query resoults to file
+pub static WRITER____STOP_SIGNAL: AtomicBool = AtomicBool::new(false);
 
-static OUT_FILE_NAME: &str = "RESOLVED.csv";
+/// Stop signal for the thing that writes to the terminal in debug mode
+pub static DISPLAY___STOP_SIGNAL: AtomicBool = AtomicBool::new(false); 
 
-static SLEEP_TIME: u64 = 10;
-
-static USE_SYSTEM_DNS: bool = !(cfg!(feature = "trust-dns"));
+/// Ctrl-C counter
+pub static CTL_C_C___STOP_SIGNAL: AtomicU8   = AtomicU8::new(0u8);
 
 #[allow(dead_code)]
 #[derive(Clone)]
@@ -63,11 +73,10 @@ enum MessageToWrite {
     End,
 }
 
-
-// Counts how many posible distinct numbers can this program generate (using current filters)
+/// Counts how many posible distinct numbers can this program (using current filters) generate
 pub fn count_posibilites() -> u128 {
     let mut count: u128 = 0;
-    for (s, e) in RESERVED_RANGES {
+    for (s, e) in NO_GO_RANGES {
         count += e - s;
     };
     count -= NEXT_PRIME;
@@ -82,7 +91,7 @@ fn check_reserved(num: BigUint) -> bool {
         return false;
     };
 
-    for (start, end) in RESERVED_RANGES {
+    for (start, end) in NO_GO_RANGES {
         if (BigUint::from(start) <= num) && (num <= BigUint::from(end)) {
             return false;
         };
@@ -114,8 +123,7 @@ fn trust_dns_lookup_addr(lipn: &mut Vec<String>, ip: &Ipv4Addr, resolver: &Resol
     };
 }
 
-
-fn check_worker(queue: Arc<Mutex<Queue<MessageToCheck>>>, out_queue: Arc<Mutex<Queue<MessageToWrite>>>, stop_sig: Arc<Mutex<Vec<bool>>>) {
+fn check_worker(queue: Arc<Mutex<Queue<MessageToCheck>>>, out_queue: Arc<Mutex<Queue<MessageToWrite>>>) {
     let mut pending: bool = false;
 
     // logic too deepth for the compiler?
@@ -129,7 +137,7 @@ fn check_worker(queue: Arc<Mutex<Queue<MessageToCheck>>>, out_queue: Arc<Mutex<Q
     let resolver: trust_dns_resolver::Resolver = trust_dns_resolver::Resolver::default().unwrap();
 
     loop {
-        if stop_sig.lock().unwrap()[0] { break };
+        if QUERYER___STOP_SIGNAL.load(Ordering::Relaxed) { break };
         
         if let Ok( MessageToCheck::End ) = queue.lock().unwrap().peek() { break };
         
@@ -181,7 +189,7 @@ fn check_worker(queue: Arc<Mutex<Queue<MessageToCheck>>>, out_queue: Arc<Mutex<Q
     };
 }
 
-fn write_worker(mut out_file: File, out_queue: Arc<Mutex<Queue<MessageToWrite>>>, stop_sig: Arc<Mutex<Vec<bool>>>) {
+fn write_worker(mut out_file: File, out_queue: Arc<Mutex<Queue<MessageToWrite>>>) {
     loop {
         if let Ok( message ) = out_queue.lock().unwrap().remove() {
             match message {
@@ -192,19 +200,19 @@ fn write_worker(mut out_file: File, out_queue: Arc<Mutex<Queue<MessageToWrite>>>
                 MessageToWrite::EmptyQueue => todo!(),
             }
         } else {
-            if stop_sig.lock().unwrap()[0] { break };
+            if WRITER____STOP_SIGNAL.load(Ordering::Relaxed) { break };
             sleep(Duration::from_millis(SLEEP_TIME * 10));
         };
     };
 }
 
-fn generate(generator_stop_signal: Arc<Mutex<Vec<bool>>>, to_check: Arc<Mutex<Queue<MessageToCheck>>>, mut skip: BigUint, mut num: BigUint, last: BigUint) {
+fn generate(to_check: Arc<Mutex<Queue<MessageToCheck>>>, mut skip: BigUint, mut num: BigUint, last: BigUint) -> (BigUint, u128) {
     let mut c: u128 = 0;
     
     let first_number: BigUint = num.clone();
 
     loop { // Generates IIPs for the query worker threads
-        if generator_stop_signal.lock().unwrap()[0] { break };
+        if GENERATOR_STOP_SIGNAL.load(Ordering::Relaxed) { break };
 
         let can_go: bool = to_check.lock().unwrap().size() < QUEUE_LIMIT * 10;
 
@@ -229,8 +237,7 @@ fn generate(generator_stop_signal: Arc<Mutex<Vec<bool>>>, to_check: Arc<Mutex<Qu
                 break;
             }
             
-            {           
-                #[cfg(debug_assertions)]
+            #[cfg(debug_assertions)] {
                 println!("{}", format!("to_check queue size is currently: {} items long.", to_check.lock().unwrap().size()));
             };
         } else {
@@ -238,38 +245,28 @@ fn generate(generator_stop_signal: Arc<Mutex<Vec<bool>>>, to_check: Arc<Mutex<Qu
         };
     };
 
-    println!("{}", format!("The last number was => {}\nIt appeared after {} iterations.", num, c));
-
     to_check.lock().unwrap().add( MessageToCheck::End ).unwrap();
+
+    return (num, c);
 }
 
-fn display_update(display_stop_signal: Arc<Mutex<Vec<bool>>>) {
-    loop {
-        if display_stop_signal.lock().unwrap()[0] { break }
-        sleep(Duration::from_secs_f32(0.1));
-        io::stdout().flush().expect("\n\rUnable to flush stdout!");
-    }
-}
-
-#[cfg(debug_assertions)]
-fn display_status(display_stop_signal: Arc<Mutex<Vec<bool>>>, generator_stop_signal: Arc<Mutex<Vec<bool>>>, queryer_stop_signal: Arc<Mutex<Vec<bool>>>, writer_stop_signal: Arc<Mutex<Vec<bool>>>, to_write: Arc<Mutex<Queue<MessageToWrite>>>, to_check: Arc<Mutex<Queue<MessageToCheck>>>) {
+fn display_status(to_write: Arc<Mutex<Queue<MessageToWrite>>>, to_check: Arc<Mutex<Queue<MessageToCheck>>>) {
     
-    let mut stop_signal_status: [bool;  3];
+    let mut stop_signal_status: [bool;  4];
     let mut queue_sizes:        [usize; 2];
     let mut last_items:         (MessageToCheck, MessageToWrite);
 
 
     loop {
-        {
-            stop_signal_status = [
-                generator_stop_signal.lock().unwrap()[0],
-                queryer_stop_signal.lock().unwrap()[0],
-                writer_stop_signal.lock().unwrap()[0],
-            ];
-        };
+        stop_signal_status = [
+            GENERATOR_STOP_SIGNAL.load(Ordering::Relaxed),
+            QUERYER___STOP_SIGNAL.load(Ordering::Relaxed),
+            WRITER____STOP_SIGNAL.load(Ordering::Relaxed),
+            DISPLAY___STOP_SIGNAL.load(Ordering::Relaxed),
+        ];
 
         {
-            let inquee = to_check.lock().unwrap(); 
+            let inquee   = to_check.lock().unwrap(); 
             let outqueue = to_write.lock().unwrap();
 
             queue_sizes = [
@@ -292,38 +289,65 @@ fn display_status(display_stop_signal: Arc<Mutex<Vec<bool>>>, generator_stop_sig
         println!("{}", format!("signal status: {:?}; queue sizes: {:?}; last times: {:?}", stop_signal_status, queue_sizes, last_items));
         io::stdout().flush().expect("\n\rUnable to flush stdout!");
 
-        if display_stop_signal.lock().unwrap()[0] { break };
+        if DISPLAY___STOP_SIGNAL.load(Ordering::Relaxed) { break };
 
         sleep(Duration::from_secs_f32(0.3));
     };
 }
 
-fn ctrl_c_handler(cc_counter: Arc<Mutex<Vec<u8>>>, cc_generator_stop_signal: Arc<Mutex<Vec<bool>>>, cc_queryer_stop_signal: Arc<Mutex<Vec<bool>>>, cc_writer_stop_signal: Arc<Mutex<Vec<bool>>>, cc_display_stop_signal: Arc<Mutex<Vec<bool>>>) {
-    let n = cc_counter.lock().unwrap()[0];
-            
-    println!("{}", match n {
-        0 => {
-            cc_generator_stop_signal.lock().unwrap()[0] = true;
-            "Keyboard Interrupt recieved, signaling generator thread to stop."
-        },
-        1 => {
-            cc_queryer_stop_signal.lock().unwrap()[0]   = true;                    
-            "Keyboard Interrupt recieved, signaling query threads to stop."
-        },
-        2 => {
-            cc_writer_stop_signal.lock().unwrap()[0]    = true;
-            "Keyboard Interrupt recieved, signaling writer thread to stop!"
-        },
-        3 => {
-            cc_display_stop_signal.lock().unwrap()[0]   = true;
-            "Keyboard Interrupt recieved, signaling display thread to stop!"
-        },
-        _ => {                
-            "Keyboard Interrupt recieved, signaling no one, lol."
-        },
-    } );            
 
-    cc_counter.lock().unwrap()[0] = n + 1;
+fn launch_display_threads(d_to_write: Arc<Mutex<Queue<MessageToWrite>>>, d_to_check: Arc<Mutex<Queue<MessageToCheck>>>) -> Option<JoinHandle<()>> {    
+    let display_thread: Option<JoinHandle<()>>;
+
+    if cfg!(debug_assertions) {
+        display_thread = std::option::Option::Some(thread::Builder::new().name("DisplayThread".into()).spawn(move || {
+            display_status(d_to_write, d_to_check);
+        }).unwrap());
+    } else {
+        display_thread = std::option::Option::None;
+    };
+
+    thread::Builder::new().name("DisplayUpdateThread".into()).spawn(move || loop {
+        if DISPLAY___STOP_SIGNAL.load(Ordering::Relaxed) { break };
+        sleep(Duration::from_secs_f32(0.1));
+        io::stdout().flush().expect("\n\rUnable to flush stdout!");
+    }).unwrap();
+
+    return display_thread;
+}
+
+fn launch_generator_thread(to_check: Arc<Mutex<Queue<MessageToCheck>>>, skip: BigUint, num: BigUint, last: BigUint) -> JoinHandle<(BigUint, u128)> {
+    return thread::Builder::new().name("GeneratorThread".into()).spawn(move || { return generate(to_check, skip, num, last); }).unwrap();
+}
+
+fn launch_write_thread(queuee: Arc<Mutex<Queue<MessageToWrite>>>, out_file: File) -> JoinHandle<()> {
+    return thread::Builder::new().name("WriterThread".into()).spawn(move || { write_worker(out_file, queuee); }).unwrap();
+}
+
+fn launch_worker_threads(worker_threads: &mut Vec<JoinHandle<()>>, tc: Arc<Mutex<Queue<MessageToCheck>>>, tw: Arc<Mutex<Queue<MessageToWrite>>>) {
+    for n in 0..(CORES * 4) { // Starts query worker threads
+        let (tc_, tw_) = (tc.clone(), tw.clone());
+        worker_threads.push(thread::Builder::new().name(format!("QueryerThread#{}", n)).spawn(move || {
+            check_worker(tc_, tw_);
+        }).unwrap());
+    };
+}
+
+/// This function will panic if you hit Ctrl + C more than 255 times xd
+fn ctrl_c_handler() {
+    println!("{}", match CTL_C_C___STOP_SIGNAL.load(Ordering::Relaxed) {
+        0 => { GENERATOR_STOP_SIGNAL.store(false, Ordering::Relaxed); "Keyboard Interrupt recieved, signaling generator thread to stop." },
+        1 => { QUERYER___STOP_SIGNAL.store(false, Ordering::Relaxed); "Keyboard Interrupt recieved, signaling query threads to stop." },
+        2 => { WRITER____STOP_SIGNAL.store(false, Ordering::Relaxed); "Keyboard Interrupt recieved, signaling writer thread to stop!" },
+        3 => { DISPLAY___STOP_SIGNAL.store(false, Ordering::Relaxed); "Keyboard Interrupt recieved, signaling display thread to stop!" },
+        _ => { "Keyboard Interrupt recieved, signaling no one, lol." }
+    });
+
+    CTL_C_C___STOP_SIGNAL.fetch_add(1u8, Ordering::Relaxed);
+}
+
+fn set_cc_handler() {
+    ctrlc::set_handler( move || { ctrl_c_handler(); }).expect("Error setting Ctrl-C handler");
 }
 
 #[allow(unused_variables)]
@@ -341,11 +365,6 @@ fn main() {
     let     to_write:  Arc<Mutex<Queue<MessageToWrite>>> = Arc::new(Mutex::new(Queue::new()));
     let     to_check:  Arc<Mutex<Queue<MessageToCheck>>> = Arc::new(Mutex::new(Queue::new()));
 
-    let     generator_stop_signal:  Arc<Mutex<Vec<bool>>> = Arc::new(Mutex::new(vec![false]));
-    let     queryer_stop_signal:    Arc<Mutex<Vec<bool>>> = Arc::new(Mutex::new(vec![false]));
-    let     writer_stop_signal:     Arc<Mutex<Vec<bool>>> = Arc::new(Mutex::new(vec![false]));
-    let     display_stop_signal:    Arc<Mutex<Vec<bool>>> = Arc::new(Mutex::new(vec![false]));
-
     //parse cli args
     if let Some(r_seed) = std::env::args().nth(1) {
         num = r_seed.parse().expect("Invalid Seed (seed must be an unsinged int)")
@@ -361,29 +380,12 @@ fn main() {
 
     assert!(last > skip, "Last number must be greater than the number of skipped iterations.");
 
-    {
-        let cc_ctr: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(vec![0u8]));
-        
-        let cc_gen_st_sg: Arc<Mutex<Vec<bool>>> = generator_stop_signal.clone(); 
-        let cc_qry_st_sg: Arc<Mutex<Vec<bool>>> = queryer_stop_signal.clone(); 
-        let cc_wrt_st_sg: Arc<Mutex<Vec<bool>>> = writer_stop_signal.clone();
-        let cc_dsp_st_sg: Arc<Mutex<Vec<bool>>> = display_stop_signal.clone();
-        
-        ctrlc::set_handler( move || {
-            ctrl_c_handler(
-                cc_ctr.clone(),
-                cc_gen_st_sg.clone(),
-                cc_qry_st_sg.clone(),
-                cc_wrt_st_sg.clone(),
-                cc_dsp_st_sg.clone(),
-            );
-        }).expect("Error setting Ctrl-C handler");
-    };
+    set_cc_handler();
     
     let mut worker_threads:    Vec<thread::JoinHandle<()>> = Vec::new();
     
-    let generator_thread:  JoinHandle<()>;
-    let display_thread:    JoinHandle<()>;
+    let generator_thread:  JoinHandle<(BigUint, u128)>;
+    let display_thread:    std::option::Option<JoinHandle<()>>;
     let write_thread:      JoinHandle<()>;
 
     let orig_hook = std::panic::take_hook();
@@ -402,95 +404,43 @@ fn main() {
     };
 
     println!("{}", format!("The seed is {}", num));
-
-    println!("Starting threads!");
-    
-    { // Starts write worker thread
-        let (queuee, sig) = (to_write.clone(), writer_stop_signal.clone());
-        write_thread = thread::Builder::new().name("WriterThread".into()).spawn(move || {
-            sleep(Duration::from_secs(3));
-            write_worker(out_file, queuee, sig);
-        }).unwrap();
-    };
-
-    for n in 0..(CORES * 4) { // Starts query worker threads
-        let (_tc, oq_, ss_) = (to_check.clone(), to_write.clone(), queryer_stop_signal.clone());
-        worker_threads.push(thread::Builder::new().name(format!("QueryerThread#{}", n)).spawn(move || {
-            sleep(Duration::from_secs(2));
-            check_worker(_tc, oq_, ss_);
-        }).unwrap());
-    };
-    
+        
     num = (BigUint::from(A_PRIMA) * num + BigUint::from(C_PRIMA)) % BigUint::from(M_PRIMA);
+    println!("{}", format!("first number is: {}", num.clone()));    
+    
+    println!("Starting threads!");
 
-    println!("{}", format!("first number is: {}", num.clone()));
+    launch_worker_threads(&mut worker_threads, to_check.clone(), to_write.clone());
 
-    {
-        let generator_stop_signal: Arc<Mutex<Vec<bool>>> = generator_stop_signal.clone();
-        let to_check: Arc<Mutex<Queue<MessageToCheck>>>  = to_check.clone();
-        let skip: BigUint                                = skip.clone();
-        let num: BigUint                                 = num.clone();
-
-        generator_thread = thread::Builder::new().name("GeneratorThread".into()).spawn(move || {
-            sleep(Duration::from_millis(SLEEP_TIME));
-            generate(generator_stop_signal, to_check, skip, num, last);
-        }).unwrap();
-    };
+    write_thread     = launch_write_thread(to_write.clone(), out_file);
+    generator_thread = launch_generator_thread(to_check.clone(), skip.clone(), num.clone(), last);
+    display_thread   = launch_display_threads(to_write.clone(), to_check.clone());
 
     {
-        let d_generator_stop_signal: Arc<Mutex<Vec<bool>>> = generator_stop_signal.clone();
-        let d_queryer_stop_signal:   Arc<Mutex<Vec<bool>>> = queryer_stop_signal.clone();
-        let d_writer_stop_signal:    Arc<Mutex<Vec<bool>>> = writer_stop_signal.clone();
-        
-        #[cfg(debug_assertions)]
-        let display_stop_signal:     Arc<Mutex<Vec<bool>>> = display_stop_signal.clone();
-
-        let display_stop_signal2:    Arc<Mutex<Vec<bool>>> = display_stop_signal.clone();
-        
-        let d_to_write:              Arc<Mutex<Queue<MessageToWrite>>> = to_write.clone();
-        let d_to_check:              Arc<Mutex<Queue<MessageToCheck>>> = to_check.clone();
-
-        
-        #[cfg(debug_assertions)]
-        {
-            display_thread = thread::Builder::new().name("DisplayThread".into()).spawn(move || {
-                display_status(display_stop_signal, d_generator_stop_signal, d_queryer_stop_signal, d_writer_stop_signal, d_to_write, d_to_check);
-            }).unwrap();
-        };
-
-        thread::Builder::new().name("DisplayUpdateThread".into()).spawn(move || {
-            display_update(display_stop_signal2);
-        }).unwrap();
+        let (c, num) = generator_thread.join().unwrap();
+        println!("{}", format!("The last number was => {}\nIt appeared after {} iterations.", c, num));
     };
 
-    generator_thread.join().unwrap();
-
-    {
-        #[cfg(debug_assertions)]
-        println!("We got hereeeeeeeeee");
-    };
-
+    #[cfg(debug_assertions)]
+    println!("We got hereeeeeeeeee");
+    
     while let Some(cur_thread) = worker_threads.pop() {
-        {
-            #[cfg(debug_assertions)]
-            println!("{}", format!("waiting for worker thread: {:?}.", cur_thread.thread().id()));
-        };
+        #[cfg(debug_assertions)]
+        println!("{}", format!("waiting for worker thread: {:?}.", cur_thread.thread().id()));
+        
         cur_thread.join().unwrap();
     };
 
     to_write.lock().unwrap().add( MessageToWrite::End ).unwrap();
     
-    {
-        #[cfg(debug_assertions)]
-        println!("waiting for writer thread.");
-    };
+    #[cfg(debug_assertions)]
+    println!("waiting for writer thread.");
 
     write_thread.join().unwrap();
 
-    display_stop_signal.lock().unwrap()[0] = true;
+    DISPLAY___STOP_SIGNAL.store(true, Ordering::Relaxed);
     
-    {
-        #[cfg(debug_assertions)]
+    if let Some(display_thread) = display_thread {
         display_thread.join().unwrap();
     };
 
@@ -498,10 +448,10 @@ fn main() {
 
 }
 
-// from https://github.com/robertdavidgraham/masscan/blob/master/data/exclude.conf
-// and others, we really dont want these to be angry at us...
-// also private networks lol
-static RESERVED_RANGES: [(u128, u128); 334] = [
+/// from https://github.com/robertdavidgraham/masscan/blob/master/data/exclude.conf
+/// and others, we really dont want these to be angry at us...
+/// also private networks lol
+pub static NO_GO_RANGES: [(u128, u128); 334] = [
     (0,          16777215 ),
     (70633728,   70633983 ),
     (93893376,   93893631 ),
