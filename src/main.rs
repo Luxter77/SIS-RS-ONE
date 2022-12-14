@@ -336,10 +336,10 @@ fn launch_worker_threads(worker_threads: &mut Vec<JoinHandle<()>>, tc: Arc<Mutex
 /// This function will panic if you hit Ctrl + C more than 255 times xd
 fn ctrl_c_handler() {
     println!("{}", match CTL_C_C___STOP_SIGNAL.load(Ordering::Relaxed) {
-        0 => { GENERATOR_STOP_SIGNAL.store(false, Ordering::Relaxed); "Keyboard Interrupt recieved, signaling generator thread to stop." },
-        1 => { QUERYER___STOP_SIGNAL.store(false, Ordering::Relaxed); "Keyboard Interrupt recieved, signaling query threads to stop." },
-        2 => { WRITER____STOP_SIGNAL.store(false, Ordering::Relaxed); "Keyboard Interrupt recieved, signaling writer thread to stop!" },
-        3 => { DISPLAY___STOP_SIGNAL.store(false, Ordering::Relaxed); "Keyboard Interrupt recieved, signaling display thread to stop!" },
+        0 => { GENERATOR_STOP_SIGNAL.store(true, Ordering::Relaxed); "Keyboard Interrupt recieved, signaling generator thread to stop." },
+        1 => { QUERYER___STOP_SIGNAL.store(true, Ordering::Relaxed); "Keyboard Interrupt recieved, signaling query threads to stop." },
+        2 => { WRITER____STOP_SIGNAL.store(true, Ordering::Relaxed); "Keyboard Interrupt recieved, signaling writer thread to stop!" },
+        3 => { DISPLAY___STOP_SIGNAL.store(true, Ordering::Relaxed); "Keyboard Interrupt recieved, signaling display thread to stop!" },
         _ => { "Keyboard Interrupt recieved, signaling no one, lol." }
     });
 
