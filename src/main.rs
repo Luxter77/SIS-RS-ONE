@@ -211,6 +211,8 @@ fn generate(to_check: Arc<Mutex<Queue<MessageToCheck>>>, mut skip: BigUint, mut 
     
     let first_number: BigUint = num.clone();
 
+    let mut send: bool;
+
     loop { // Generates IIPs for the query worker threads
         if GENERATOR_STOP_SIGNAL.load(Ordering::Relaxed) { break };
 
@@ -219,12 +221,22 @@ fn generate(to_check: Arc<Mutex<Queue<MessageToCheck>>>, mut skip: BigUint, mut 
         if can_go {
             c += 1;
             
-            if skip == BigUint::from(0u128) && !zip_flag {
-                to_check.lock().unwrap().add( MessageToCheck::ToCheck(c, num.clone()) ).unwrap();
+            if skip == BigUint::from(0u128) {
+                send = true;
             } else {
-                if zip_flag { if num == zip { zip_flag = false; }
-                } else { skip -= BigUint::from(1u128); }
-            }
+                skip -= BigUint::from(1u128);
+                send = false;
+            };
+
+            if zip_flag {
+                if num != zip {
+                    send = false;
+                } else {
+                    zip_flag = false;
+                }
+            } 
+
+            if send { to_check.lock().unwrap().add( MessageToCheck::ToCheck(c, num.clone()) ).unwrap(); };
 
             num = (BigUint::from(A_PRIMA) * num + BigUint::from(C_PRIMA)) % BigUint::from(M_PRIMA);
             
@@ -385,9 +397,9 @@ fn main() {
         last = r_last.parse().expect("Invalid last number (last number must be an unsinged int)");
     };
 
-    /// TODO: DOCMENT THIS ONE
+    // TODO: DOCMENT THIS ONE
     if let Some(r_zip) = std::env::args().nth(4) {
-        zip      = BigUint::from(u32::from(r_zip.parse::<Ipv4Addr>().unwrap()));
+        zip      = r_zip.parse::<BigUint>().expect("fuck");
         zip_flag = true;
     }
 
