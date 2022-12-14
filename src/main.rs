@@ -91,6 +91,7 @@ fn check_reserved(num: BigUint) -> bool {
     return true;
 }
 
+#[cfg(feature = "trust-dns")]
 fn trust_dns_lookup_addr(lipn: &mut Vec<String>, ip: &Ipv4Addr, resolver: &Resolver) {
     if let Ok(res) = resolver.reverse_lookup(std::net::IpAddr::V4(ip.to_owned())) {
         #[cfg(debug_assertions)] {
@@ -112,7 +113,6 @@ fn trust_dns_lookup_addr(lipn: &mut Vec<String>, ip: &Ipv4Addr, resolver: &Resol
         };
     };
 }
-    
 
 
 fn check_worker(queue: Arc<Mutex<Queue<MessageToCheck>>>, out_queue: Arc<Mutex<Queue<MessageToWrite>>>, stop_sig: Arc<Mutex<Vec<bool>>>) {
