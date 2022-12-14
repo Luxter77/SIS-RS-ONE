@@ -15,6 +15,9 @@ ctrlc = "3.2.3"
 rand = "0.8.5"
 pad = "0.1.6"
 
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"
+
 [features]
 trust-dns = ["dep:trust-dns-resolver"]
 host-resolv = ["trust-dns"]
