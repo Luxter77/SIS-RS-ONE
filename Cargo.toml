@@ -1,6 +1,6 @@
 [package]
 name = "SIS-RS-ONE"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -25,3 +25,8 @@ host-resolv = ["trust-dns"]
 default = ["trust-dns"]
 
 # TODO: tor-resolver = ["trust-dns"]
+
+[package.metadata.winres]
+OriginalFilename = "SIS-RS-ONE.exe"
+FileDescription = "aaaaaaeeiou uu asdu afsau f"
+LegalCopyright = "Copyright © 2022"
