@@ -102,7 +102,7 @@ pub(crate) fn resolv_worker(queue: Arc<Mutex<Queue<MessageToCheck>>>, out_queue:
                 for ipn in lipn {
                     if ipn != ip.to_string() {
                         let [x, y, z, w] = ip.clone().octets();
-                        println!("{}", format!("[{p:>17}% ][ {a:>10} / {t} ][ IP: {x:>3}.{y:>3}.{z:>3}.{w:>3} ][ DNS: {d} ]", a=c, p=p, t=LAST_NUMBR, d=ipn, x=x, y=y, z=z, w=w));
+                        println!("{}", format!("[{p:>17}% ][ {a:>10} / {t} ][ IP: {x:<3}.{y:<3}.{z:<3}.{w:<3} ][ DNS: {d} ]", a=c, p=p, t=LAST_NUMBR, d=ipn, x=x, y=y, z=z, w=w));
                         out_queue.lock().unwrap().add(MessageToWrite::ToWrite(ip.to_string(), ipn) ).unwrap();
                     } else {
                         #[cfg(debug_assertions)] println!("{}", format!("[{p:>17}%][{a:>10}/{t}][IP: {b:>15}][IPN: {d}]", a=c, p=p, t=LAST_NUMBR, b=sip, d=ipn));
