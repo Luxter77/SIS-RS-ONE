@@ -45,8 +45,10 @@ fn trust_dns_lookup_addr(lipn: &mut Vec<String>, ip: &Ipv4Addr, resolver: &Resol
             let ips: Vec<String> = res.iter().map( |nam| -> String { nam.to_ascii() } ).collect();
             if ips.len() > 1 { println!("{}", format!("IP HAS MORE THAN ONE ADRESS! -> {:?}", ips)); };
             lipn.extend(ips.iter().map( move | nam: &String | nam.to_owned() ).collect::<std::collections::HashSet<_>>());
-        }
+        };
+
         #[cfg(not(debug_assertions))] lipn.extend(res.iter().map( |nam| -> String { nam.to_ascii() } ).collect::<std::collections::HashSet<_>>());
+        
         #[cfg(feature = "host-resolv")]  {
             if lipn.len() > 0 {
                 let mut h_res_conf = ResolverConfig::new();          
@@ -88,8 +90,6 @@ pub(crate) fn resolv_worker(queue: Arc<Mutex<Queue<MessageToCheck>>>, out_queue:
                 
                 let     ip:     Ipv4Addr    = Ipv4Addr::from(iip.to_string().parse::<u32>().unwrap());
 
-                #[cfg(debug_assertions)] let     sip:    String      = ip.clone().to_string().pad_to_width_with_alignment(15, Alignment::Right);
-
                 if crate::r#static::USE_SYSTEM_DNS {
                     lipn.push(lookup_addr(&ip.into()).unwrap());
                 } else {
@@ -100,16 +100,16 @@ pub(crate) fn resolv_worker(queue: Arc<Mutex<Queue<MessageToCheck>>>, out_queue:
                 lipn.sort_by(| a, b | human_sort::compare(a.as_str(), b.as_str()));
                 
                 for ipn in lipn {
+                    let [x, y, z, w] = ip.clone().octets();
                     if ipn != ip.to_string() {
-                        let [x, y, z, w] = ip.clone().octets();
-                        println!("{}", format!("[{p:>17}% ][ {a:>10} / {t} ][ IP: {x:<3}.{y:<3}.{z:<3}.{w:<3} ][ DNS: {d} ]", a=c, p=p, t=LAST_NUMBR, d=ipn, x=x, y=y, z=z, w=w));
+                        println!("{}", format!("[ {p:>17}% ][ {a:>10} / {t} ][ IP: {x:<3}.{y:<3}.{z:<3}.{w:<3} ][ DNS: {d} ]", a=c, p=p, t=LAST_NUMBR, x=x, y=y, z=z, w=w, d=ipn));
                         out_queue.lock().unwrap().add(MessageToWrite::ToWrite(ip.to_string(), ipn) ).unwrap();
                     } else {
-                        #[cfg(debug_assertions)] println!("{}", format!("[{p:>17}%][{a:>10}/{t}][IP: {b:>15}][IPN: {d}]", a=c, p=p, t=LAST_NUMBR, b=sip, d=ipn));
+                        #[cfg(debug_assertions)] println!("{}", format!("[ {p:>17}% ][ {a:>10} / {t} ][IP: {x:<3}.{y:<3}.{z:<3}.{w:<3} ][ IPN: {d} ]", a=c, p=p, t=LAST_NUMBR, x=x, y=y, z=z, w=w, d=ipn));
                     };
                 };
             } else {
-                #[cfg(debug_assertions)] println!("{}", format!("[{p:>17}%][{a:>10}/{t}][IP: {b:>15}][MSG: REJECTED!]", a=c, p=p, t=LAST_NUMBR, b=iip.clone().to_string().pad_to_width_with_alignment(15, Alignment::Right)));
+                #[cfg(debug_assertions)] println!("{}", format!("[ {p:>17}% ][ {a:>10} / {t} ][ IP: {b:>15} ][ MSG: REJECTED! ]", a=c, p=p, t=LAST_NUMBR, b=iip.clone().to_string().pad_to_width_with_alignment(15, Alignment::Right)));
             };
             std::io::Write::flush(&mut std::io::stdout()).expect("\n\rUnable to flush stdout!");
             pending = false;
@@ -117,6 +117,6 @@ pub(crate) fn resolv_worker(queue: Arc<Mutex<Queue<MessageToCheck>>>, out_queue:
             std::thread::sleep(std::time::Duration::from_millis(SLEEP_TIME * 3));
         };
 
-        #[cfg(debug_assertions)] println!("{}", format!("to_write queue size is currently: {} items long.", queue.lock().unwrap().size()));
+        // #[cfg(debug_assertions)] println!("{}", format!("to_write queue size is currently: {} items long.", queue.lock().unwrap().size()));
     };
 }

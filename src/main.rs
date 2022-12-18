@@ -16,11 +16,12 @@ use queues::{IsQueue, Queue};
 use rand::Rng;
 
 mod message;
-mod resolv;
 mod r#static;
+mod display;
+mod resolv;
 
-use message::*;
 use r#static::*;
+use message::*;
 use resolv::*;
 
 
@@ -98,7 +99,7 @@ fn generate(to_check: Arc<Mutex<Queue<MessageToCheck>>>, mut skip: BigUint, mut 
                 break;
             }
             
-            #[cfg(debug_assertions)] println!("{}", format!("to_check queue size is currently: {} items long.", to_check.lock().unwrap().size()));
+            // #[cfg(debug_assertions)] println!("{}", format!("to_check queue size is currently: {} items long.", to_check.lock().unwrap().size()));
         } else {
             sleep(Duration::from_secs(SLEEP_TIME / 2));
         };
@@ -197,7 +198,7 @@ fn ctrl_c_handler() {
         1 => { QUERYER___STOP_SIGNAL.store(true, Ordering::Relaxed); "Keyboard Interrupt recieved, signaling query threads to stop." },
         2 => { WRITER____STOP_SIGNAL.store(true, Ordering::Relaxed); "Keyboard Interrupt recieved, signaling writer thread to stop!" },
         3 => { DISPLAY___STOP_SIGNAL.store(true, Ordering::Relaxed); "Keyboard Interrupt recieved, signaling display thread to stop!" },
-        _ => { "Keyboard Interrupt recieved, signaling no one, lol." }
+        _ => { "Keyboard Interrupt recieved, signaling no one, lol." },
     });
 
     CTL_C_C___STOP_SIGNAL.fetch_add(1u8, Ordering::Relaxed);
