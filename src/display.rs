@@ -89,13 +89,13 @@ pub(crate) fn launch_display_thread() -> JoinHandle<()> {
             if pending { 
                 match message {
                     MessageToPrint::ToDisplay(d_origin, message) => {
-                        match d_origin {
-                            MessageToPrintOrigin::GeneratorThread => println!("[ @GENERATOR_THREAD ]{}", message),
-                            MessageToPrintOrigin::QueryerThread   => println!("[ @QUERYER_THREAD   ]{}", message),
-                            MessageToPrintOrigin::WriterThread    => println!("[ @WRITER_THREAD    ]{}", message),
-                            MessageToPrintOrigin::DisplayThread   => println!("[ @DISPLAY_THREAD   ]{}", message),
-                            MessageToPrintOrigin::MainThread      => println!("[ @MAIN_THREAD      ]{}", message),
-                        };
+                        println!("{}", match d_origin {
+                            MessageToPrintOrigin::GeneratorThread => format!("[ @GENERATOR_THREAD ]{}", message),
+                            MessageToPrintOrigin::QueryerThread   => format!("[ @QUERYER_THREAD   ]{}", message),
+                            MessageToPrintOrigin::WriterThread    => format!("[ @WRITER_THREAD    ]{}", message),
+                            MessageToPrintOrigin::DisplayThread   => format!("[ @DISPLAY_THREAD   ]{}", message),
+                            MessageToPrintOrigin::MainThread      => format!("[ @MAIN_THREAD      ]{}", message),
+                        });
                     },
                     MessageToPrint::End => { break },
                     _ => {},
