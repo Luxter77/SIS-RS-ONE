@@ -63,8 +63,8 @@ pub(crate) fn resolv_worker() {
 
     // logic too deepth for the compiler?
     // This will never get read, but the all knowing compiler insists...
-    let mut iip:     BigUint = BigUint::from(0u128);
-    let mut c:       BigUint = BigUint::from(0u128);
+    let mut iip:     BigUint = ZERO.clone();
+    let mut c:       BigUint = ZERO.clone();
 
     let mut p:       f32;
 

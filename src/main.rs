@@ -21,8 +21,9 @@ mod resolv;
 use r#static::*;
 use message::{MessageToPrintOrigin, MessageToWrite, MessageToPrint};
 use display::{launch_display_thread, launch_status_thread, display};
+use generator::{generate, count_posibilites};
 use resolv::resolv_worker;
-use generator::generate;
+
 
 fn write_worker(mut out_file: File) {
     loop {
@@ -79,16 +80,15 @@ fn set_cc_handler() {
 fn main() {
     let mut num:       BigUint                           = BigUint::from(rand::thread_rng().gen::<u128>());
 
-    let mut skip:      BigUint                           = BigUint::from(0u128);
+    let mut skip:      BigUint                           = ZERO.clone();
     
     let mut last:      BigUint                           = BigUint::from(LAST_NUMBR);
     
-    let mut zip:       BigUint                           = BigUint::from(0u128);
+    let mut zip:       BigUint                           = ZERO.clone();
     let mut zip_flag:  bool                              = false;
 
     let     c_last:    BigUint;
     let     num_last:  BigUint;
-
     let     out_file:  File;
     
     let     b:         &std::path::Path                  = std::path::Path::new(OUT_FILE_NAME);
@@ -97,16 +97,13 @@ fn main() {
     if let Some(r_seed) = std::env::args().nth(1) {
         num = r_seed.parse().expect("Invalid Seed (seed must be an unsinged int)")
     };
-
+    
     if let Some(r_skip) = std::env::args().nth(2) { skip = r_skip.parse().expect("Invalid skip number (skip number must be an unsinged int)"); };
     if let Some(r_last) = std::env::args().nth(3) { last = r_last.parse().expect("Invalid last number (last number must be an unsinged int)"); };
-    if let Some(r_zip)  = std::env::args().nth(4) {
-        zip = r_zip.parse::<BigUint>().expect("fuck");
-        zip_flag = true;
-    };
-
+    if let Some(r_zip)  = std::env::args().nth(4) { zip = r_zip.parse::<BigUint>().expect("fuck"); zip_flag = true; };
+     
     assert!(last > skip, "Last number must be greater than the number of skipped iterations.");
-
+    
     set_cc_handler();
     
     let mut worker_threads:    Vec<thread::JoinHandle<()>> = Vec::new();
@@ -119,12 +116,14 @@ fn main() {
     
     let write_thread:      JoinHandle<()>;
 
+    let     numspace:  BigUint                           = count_posibilites(last.clone() - skip.clone());
+    
     let orig_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move | panic_info | {
         orig_hook(panic_info);
         std::process::exit(1);
     }));
-
+    
     if b.exists() {
         out_file = OpenOptions::new().append(true).open(b.clone()).expect("Could not open existing file!");
         println!("{}", format!("[ @MAIN_THREAD      ][ Using existing file: {} ]", b.display()));
@@ -140,6 +139,8 @@ fn main() {
     
     println!("{}", format!("[ @MAIN_THREAD      ][ First number is: {} ]", num.clone()));
     
+    println!("{}", format!("[ @MAIN_THREAD      ][ This run will generate {} valid IPs ]", numspace.clone()));
+
     println!("{}", "[ @MAIN_THREAD      ][ Starting threads! ]");
     
     println!("{}", "[ @MAIN_THREAD      ][ Launching DisplayThread ]");
@@ -169,12 +170,12 @@ fn main() {
     
     write_thread.join().unwrap();
     
-    display(MessageToPrintOrigin::MainThread, "[ - - - - - - - - - - ]");
+    display(MessageToPrintOrigin::MainThread, "[ - - - - - - - - - - - - - ]");
     display(MessageToPrintOrigin::MainThread, &format!("[ We started @ {} Iterations ]",            skip));
     display(MessageToPrintOrigin::MainThread, &format!("[ The last number was => {} ]",             c_last));
-    display(MessageToPrintOrigin::MainThread, &format!("[ We found {} records ({} idstinct IPs) ]", F_COUNT.get(), F_D_COUNT.get()));
+    display(MessageToPrintOrigin::MainThread, &format!("[ We found {} records ({} idstinct IPs out of {} in usable space) ]", F_COUNT.get(), F_D_COUNT.get(), numspace));
     display(MessageToPrintOrigin::MainThread, &format!("[ It appeared after {} iterations. ]",      num_last));
-    display(MessageToPrintOrigin::MainThread, "[ - - - - - - - - - - ]");
+    display(MessageToPrintOrigin::MainThread, "[ - - - - - - - - - - - - - ]");
 
     if let Some(status_thread) = status_thread {
         display(MessageToPrintOrigin::MainThread, "[ Waiting for status thread. ]");

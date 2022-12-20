@@ -6,20 +6,14 @@ use crate::message::{MessageToCheck, MessageToPrintOrigin};
 
 #[allow(dead_code)]
 /// Counts how many posible distinct numbers can this program (using current filters) generate
-pub fn count_posibilites() -> u128 {
-    let mut count: u128 = 0;
-    for (s, e) in NO_GO_RANGES {
-        count += e - s;
-    };
-    count -= NEXT_PRIME;
-
-    println!("{}", count);
-
-    return count;
+pub fn count_posibilites(clamp: BigUint) -> BigUint {
+    let mut count: BigUint = BigUint::from(NEXT_PRIME);
+    for (s, e) in NO_GO_RANGES { count -= e - s; };
+    return count.clamp(ZERO.clone(), clamp);
 }
 
 pub(crate) fn generate(mut skip: BigUint, mut num: BigUint, last: BigUint, zip: BigUint, mut zip_flag: bool) -> (BigUint, BigUint) {
-    let mut c: BigUint = BigUint::from(0u128);
+    let mut c: BigUint = ZERO.clone();
     
     let first_number: BigUint = num.clone();
 
@@ -31,12 +25,12 @@ pub(crate) fn generate(mut skip: BigUint, mut num: BigUint, last: BigUint, zip: 
         let can_go: bool = QUEUE_TO_CHECK.size() < QUEUE_LIMIT * 10;
 
         if can_go {
-            c += BigUint::from(1u128);
+            c += ONE.clone();
             
-            if skip == BigUint::from(0u128) {
+            if skip == ZERO.clone() {
                 send = true;
             } else {
-                skip -= BigUint::from(1u128);
+                skip -= ONE.clone();
                 send = false;
             };
 
