@@ -1,9 +1,7 @@
-use num_bigint::BigUint;
-
 #[derive(Clone, Debug)]
 pub enum MessageToCheck {
     EmptyQueue,
-    ToCheck(BigUint, BigUint),
+    ToCheck(u128, u128),
     End,
 }
 

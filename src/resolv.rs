@@ -1,8 +1,6 @@
 #![allow(non_snake_case)]
 
-use num_traits::cast::ToPrimitive;
 use dns_lookup::lookup_addr;
-use num_bigint::BigUint;
 
 use pad::{Alignment, PadStr};
 
@@ -20,13 +18,13 @@ use crate::message::*;
 use crate::r#static::*;
 use crate::display::display;
 
-fn check_reserved(num: BigUint) -> bool {
-    if num > BigUint::from(MAX_IIP) {
+fn check_reserved(num: u128) -> bool {
+    if num > (MAX_IIP) {
         return false;
     };
 
     for (start, end) in NO_GO_RANGES {
-        if (BigUint::from(start) <= num) && (num <= BigUint::from(end)) {
+        if ((start) <= num) && (num <= (end)) {
             return false;
         };
     };
@@ -63,8 +61,8 @@ pub(crate) fn resolv_worker() {
 
     // logic too deepth for the compiler?
     // This will never get read, but the all knowing compiler insists...
-    let mut iip:     BigUint = ZERO.clone();
-    let mut c:       BigUint = ZERO.clone();
+    let mut iip:     u128 = 0u128;
+    let mut c:       u128 = 0u128;
 
     let mut p:       f32;
 
@@ -80,7 +78,7 @@ pub(crate) fn resolv_worker() {
         };
 
         if pending {
-            p  = (c.clone() * BigUint::from(100u128) / LAST_NUMBR).to_f32().expect("AUCHI");
+            p  = c as f32 * 100.0f32 / LAST_NUMBR as f32;
 
             if check_reserved(iip.clone()) {
                 let mut lipn:   Vec<String> = Vec::new();

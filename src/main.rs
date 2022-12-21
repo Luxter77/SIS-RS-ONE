@@ -9,7 +9,6 @@ use std::fs::File;
 use std::io::Write;
 use std::{thread, u128};
 
-use num_bigint::BigUint;
 use rand::Rng;
 
 mod generator;
@@ -41,7 +40,7 @@ fn write_worker(mut out_file: File) {
     display(MessageToPrintOrigin::WriterThread, "[ Write End ]");
 }
 
-fn launch_generator_thread(skip: BigUint, num: BigUint, last: BigUint, zip: BigUint, zip_flag: bool) -> JoinHandle<(BigUint, BigUint)> {
+fn launch_generator_thread(skip: u128, num: u128, last: u128, zip: u128, zip_flag: bool) -> JoinHandle<(u128, u128)> {
     display(MessageToPrintOrigin::MainThread, "[ Launching GeneratorThread ]");
     return thread::Builder::new().name("GeneratorThread".into()).spawn(move || { return generate(skip, num, last, zip, zip_flag); }).unwrap();
 }
@@ -78,17 +77,17 @@ fn set_cc_handler() {
 
 #[allow(unused_variables)]
 fn main() {
-    let mut num:       BigUint                           = BigUint::from(rand::thread_rng().gen::<u128>());
+    let mut num:       u128                           = rand::thread_rng().gen::<u128>();
 
-    let mut skip:      BigUint                           = ZERO.clone();
+    let mut skip:      u128                           = 0u128;
     
-    let mut last:      BigUint                           = BigUint::from(LAST_NUMBR);
+    let mut last:      u128                           = LAST_NUMBR;
     
-    let mut zip:       BigUint                           = ZERO.clone();
+    let mut zip:       u128                           = 0u128;
     let mut zip_flag:  bool                              = false;
 
-    let     c_last:    BigUint;
-    let     num_last:  BigUint;
+    let     c_last:    u128;
+    let     num_last:  u128;
     let     out_file:  File;
     
     let     b:         &std::path::Path                  = std::path::Path::new(OUT_FILE_NAME);
@@ -100,7 +99,7 @@ fn main() {
     
     if let Some(r_skip) = std::env::args().nth(2) { skip = r_skip.parse().expect("Invalid skip number (skip number must be an unsinged int)"); };
     if let Some(r_last) = std::env::args().nth(3) { last = r_last.parse().expect("Invalid last number (last number must be an unsinged int)"); };
-    if let Some(r_zip)  = std::env::args().nth(4) { zip = r_zip.parse::<BigUint>().expect("fuck"); zip_flag = true; };
+    if let Some(r_zip)  = std::env::args().nth(4) { zip = r_zip.parse::<u128>().expect("fuck"); zip_flag = true; };
      
     assert!(last > skip, "Last number must be greater than the number of skipped iterations.");
     
@@ -108,7 +107,7 @@ fn main() {
     
     let mut worker_threads:    Vec<thread::JoinHandle<()>> = Vec::new();
     
-    let generator_thread:  JoinHandle<(BigUint, BigUint)>;
+    let generator_thread:  JoinHandle<(u128, u128)>;
     let display_thread:    JoinHandle<()>;
     
     #[allow(unused_variables)]
@@ -116,7 +115,7 @@ fn main() {
     
     let write_thread:      JoinHandle<()>;
 
-    let     numspace:  BigUint                           = count_posibilites(last.clone() - skip.clone());
+    let     numspace:  u128                           = count_posibilites(last.clone() - skip.clone());
     
     let orig_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move | panic_info | {
@@ -135,7 +134,9 @@ fn main() {
 
     println!("{}", format!("[ @MAIN_THREAD      ][ The seed is {} ]", num));
     
-    num = (BigUint::from(A_PRIMA) * num + BigUint::from(C_PRIMA)) % BigUint::from(M_PRIMA);
+    // ```(A_PRIMA * num + C_PRIMA) % M_PRIMA``` but ```A_PRIMA * num``` may not fit on a u128
+    // so we aply some funky math to keep the numbers down...
+    num = (((A_PRIMA % M_PRIMA) * (num % M_PRIMA)) % M_PRIMA) + (C_PRIMA % M_PRIMA);
     
     println!("{}", format!("[ @MAIN_THREAD      ][ First number is: {} ]", num.clone()));
     

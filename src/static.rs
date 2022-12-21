@@ -1,6 +1,5 @@
 
 use lazy_static::lazy_static;
-use num_bigint::BigUint;
 use queues::{Queue, IsQueue};
 
 use std::sync::{atomic::{AtomicBool, AtomicU8}, Mutex};
@@ -36,16 +35,11 @@ pub static DISPLAY___STOP_SIGNAL: AtomicBool = AtomicBool::new(false);
 /// Ctrl-C counter
 pub static CTL_C_C___STOP_SIGNAL: AtomicU8   = AtomicU8::new(0u8);
 
-type MessageToCheckQueue = Mutex<Queue<MessageToCheck>>;
-type MessageToWriteQueue = Mutex<Queue<MessageToWrite>>;
-type MessageToPrintQueue = Mutex<Queue<MessageToPrint>>;
+pub type MessageToCheckQueue = Mutex<Queue<MessageToCheck>>;
+pub type MessageToWriteQueue = Mutex<Queue<MessageToWrite>>;
+pub type MessageToPrintQueue = Mutex<Queue<MessageToPrint>>;
 
 lazy_static! {
-    /// BIG ONE
-    pub static ref ONE:  BigUint = BigUint::from(1u128);
-    /// BIG ZERO
-    pub static ref ZERO: BigUint = BigUint::from(0u128);
-
     // static queue, holds the messages sent by the generator engine
     pub static ref QUEUE_TO_CHECK: MessageToCheckQueue = Mutex::new(Queue::new());
     // static queue, holds the messages sent by any engine to display
@@ -54,9 +48,9 @@ lazy_static! {
     pub static ref QUEUE_TO_WRITE: MessageToWriteQueue = Mutex::new(Queue::new());
 
     // global count of how many adresses where found
-    pub static ref F_COUNT:   Mutex<BigUint> = Mutex::new(ZERO.clone());
+    pub static ref F_COUNT:   Mutex<u128> = Mutex::new(0u128);
     // global count of how many distinct IPs we found adresses for
-    pub static ref F_D_COUNT: Mutex<BigUint> = Mutex::new(ZERO.clone());
+    pub static ref F_D_COUNT: Mutex<u128> = Mutex::new(0u128);
 }
 
 pub trait StaticQueue<T: Clone> {
@@ -108,21 +102,21 @@ impl StaticQueue<MessageToPrint> for MessageToPrintQueue {
 pub trait Counter {
     fn add_one(&self);
     fn add_many(&self, num: usize);
-    fn get(&self) -> BigUint;
+    fn get(&self) -> u128;
 }
 
-impl Counter for Mutex<BigUint> {
+impl Counter for Mutex<u128> {
     fn add_one(&self) {
         let mut state = self.lock().unwrap();
-        *state = state.clone() + ONE.clone();
+        *state = state.clone() + 1u128;
     }
     
     fn add_many(&self, num: usize) {
         let mut state = self.lock().unwrap();
-        *state = state.clone() + BigUint::from(num);
+        *state = state.clone() + num as u128;
     }
 
-    fn get(&self) -> BigUint {
+    fn get(&self) -> u128 {
         return self.lock().unwrap().clone();
     }
 }
