@@ -3,7 +3,7 @@ use num_bigint::BigUint;
 #[derive(Clone, Debug)]
 pub enum MessageToCheck {
     EmptyQueue,
-    ToCheck(u128, BigUint),
+    ToCheck(BigUint, BigUint),
     End,
 }
 
@@ -11,5 +11,21 @@ pub enum MessageToCheck {
 pub enum MessageToWrite {
     EmptyQueue,
     ToWrite(String, String),
+    End,
+}
+
+#[derive(Clone, Debug)]
+pub enum MessageToPrintOrigin {
+    GeneratorThread,
+    QueryerThread,
+    WriterThread,
+    DisplayThread,
+    MainThread,
+}
+
+#[derive(Clone, Debug)]
+pub enum MessageToPrint {
+    EmptyQueue,
+    ToDisplay(MessageToPrintOrigin, String),
     End,
 }
