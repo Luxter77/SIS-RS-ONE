@@ -84,7 +84,7 @@ fn main() {
     let mut last:      u128                           = LAST_NUMBR;
     
     let mut zip:       u128                           = 0u128;
-    let mut zip_flag:  bool                              = false;
+    let mut zip_flag:  bool                           = false;
 
     let     c_last:    u128;
     let     num_last:  u128;

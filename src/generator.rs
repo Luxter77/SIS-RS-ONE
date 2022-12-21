@@ -42,13 +42,13 @@ pub(crate) fn generate(mut skip: u128, mut num: u128, last: u128, zip: u128, mut
 
             if send { QUEUE_TO_CHECK.add( MessageToCheck::ToCheck(c.clone(), num.clone()) ); };
 
-            num = ((A_PRIMA) * num + (C_PRIMA)) % (M_PRIMA);
+            num = (((A_PRIMA % M_PRIMA) * (num % M_PRIMA)) % M_PRIMA) + (C_PRIMA % M_PRIMA);
             
             if num == first_number {
                 display(MessageToPrintOrigin::GeneratorThread, "[ We went all the way arround!!!1!!11!1one!!1!111 ]"); break;
             };
             
-            if num == last {
+            if c == last {
                 display(MessageToPrintOrigin::GeneratorThread, "[ We reached the stipulated end! ]"); break;
             }
             
