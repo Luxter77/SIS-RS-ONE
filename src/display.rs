@@ -97,6 +97,7 @@ pub(crate) fn launch_display_thread() -> JoinHandle<()> {
                             MessageToPrintOrigin::MainThread      => format!("[ @MAIN_THREAD      ]{}", message),
                         });
                     },
+                    MessageToPrint::Wait(time) => { sleep(time) },
                     MessageToPrint::End => { break },
                     _ => {},
                 };

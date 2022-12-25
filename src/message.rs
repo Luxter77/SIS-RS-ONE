@@ -1,7 +1,7 @@
 #[derive(Clone, Debug)]
 pub enum MessageToCheck {
     EmptyQueue,
-    ToCheck(u128, u128),
+    ToCheck(u128, u32),
     End,
 }
 
@@ -25,5 +25,6 @@ pub enum MessageToPrintOrigin {
 pub enum MessageToPrint {
     EmptyQueue,
     ToDisplay(MessageToPrintOrigin, String),
+    Wait(std::time::Duration),
     End,
 }

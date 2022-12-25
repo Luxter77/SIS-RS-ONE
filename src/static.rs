@@ -6,7 +6,7 @@ use std::sync::{atomic::{AtomicBool, AtomicU8}, Mutex};
 use crate::message::{MessageToCheck, MessageToPrint, MessageToWrite};
 
 // 255.255.255.255
-pub(crate) const MAX_IIP:        u128  = 4294967295u128;
+pub(crate) const MAX_IIP:        u32   = u32::MAX;
 pub(crate) const NEXT_PRIME:     u128  = 4294967311u128; // 4294967295 is the next prime to 4294967295 (MAX_IIP)
 pub(crate) const LAST_NUMBR:     u128  = NEXT_PRIME + 1u128; // 4294967295 + 1
 
@@ -124,7 +124,7 @@ impl Counter for Mutex<u128> {
 /// from <https://github.com/robertdavidgraham/masscan/blob/master/data/exclude.conf>
 /// and others, we really dont want these to be angry at us...
 /// also private networks lol
-pub static NO_GO_RANGES: [(u128, u128); 334] = [
+pub static NO_GO_RANGES: [(u32, u32); 333] = [
     (0,          16777215 ),
     (70633728,   70633983 ),
     (93893376,   93893631 ),
@@ -457,6 +457,5 @@ pub static NO_GO_RANGES: [(u128, u128); 334] = [
     (3758096384, 4026531839),
     (3925606400, 3925606655),
     (4026531840, 4294967294),
-    (4294967294, LAST_NUMBR),
-    (4294967295, 4294967295),
+    (4294967294, MAX_IIP   ),
 ];

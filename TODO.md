@@ -10,6 +10,8 @@
 
 [ ] Add TOR sockets ...?
 
+[ ] Refactor feature switches to propper CLI arguments
+
 ## Look at this funny cat
 
 ![They are drinking wine](https://pbs.substack.com/media/FEUaxltXMAE4NmB.jpg)

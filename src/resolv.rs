@@ -18,7 +18,7 @@ use crate::message::*;
 use crate::r#static::*;
 use crate::display::display;
 
-fn check_reserved(num: u128) -> bool {
+fn check_reserved(num: u32) -> bool {
     if num > (MAX_IIP) {
         return false;
     };
@@ -30,6 +30,13 @@ fn check_reserved(num: u128) -> bool {
     };
 
     return true;
+}
+
+/// Counts how many posible distinct numbers can this program (using current filters) generate
+pub fn count_posibilites(clamp: u128) -> u128 {
+    let mut count: u128 = NEXT_PRIME;
+    for (s, e) in NO_GO_RANGES { count -= (e - s) as u128; };
+    return count.clamp(0u128, clamp);
 }
 
 #[cfg(feature = "trust-dns")]
@@ -58,14 +65,17 @@ fn trust_dns_lookup_addr(lipn: &mut Vec<String>, ip: &Ipv4Addr, resolver: &Resol
 pub(crate) fn resolv_worker() {
     let mut pending: bool = false;
     let mut found:   bool = false;
-
+    
     // logic too deepth for the compiler?
     // This will never get read, but the all knowing compiler insists...
-    let mut iip:     u128 = 0u128;
+    let mut max_pos: u128 = u32::MAX.into();
+    let mut iip:     u32  = 0u32;
     let mut c:       u128 = 0u128;
-
+    
+    
     let mut p:       f32;
 
+    if cfg!(feature = "PRand-LCG") { max_pos = LAST_NUMBR; }
     #[cfg(feature = "trust-dns")] let resolver: trust_dns_resolver::Resolver = trust_dns_resolver::Resolver::default().unwrap();
 
     loop {
@@ -78,7 +88,7 @@ pub(crate) fn resolv_worker() {
         };
 
         if pending {
-            p  = c as f32 * 100.0f32 / LAST_NUMBR as f32;
+            p = c as f32 * 100.0f32 / max_pos as f32;
 
             if check_reserved(iip.clone()) {
                 let mut lipn:   Vec<String> = Vec::new();
@@ -99,14 +109,14 @@ pub(crate) fn resolv_worker() {
                     let [x, y, z, w] = ip.clone().octets();
                     if ipn != ip.to_string() {
                         F_COUNT.add_one();
-                        display(MessageToPrintOrigin::QueryerThread, &format!("[ {p:>17}% ][ {a:>10} / {t} ][ IP: {x:<3}.{y:<3}.{z:<3}.{w:<3} ][ DNS: {d} ]", a=c, p=p, t=LAST_NUMBR, x=x, y=y, z=z, w=w, d=ipn));
+                        display(MessageToPrintOrigin::QueryerThread, &format!("[ {p:0>17}% ][ {c:>10} / {max_pos} ][ IP: {x:<3}.{y:<3}.{z:<3}.{w:<3} ][ DNS: {ipn} ]"));
                         QUEUE_TO_WRITE.add(MessageToWrite::ToWrite(ip.to_string(), ipn) );
                     } else if cfg!(debug_assertions) {
-                        display(MessageToPrintOrigin::QueryerThread, &format!("[ {p:>17}% ][ {a:>10} / {t} ][IP: {x:<3}.{y:<3}.{z:<3}.{w:<3} ][ IPN: {d} ]", a=c, p=p, t=LAST_NUMBR, x=x, y=y, z=z, w=w, d=ipn));
+                        display(MessageToPrintOrigin::QueryerThread, &format!("[ {p:0>17}% ][ {c:>10} / {max_pos} ][IP: {x:<3}.{y:<3}.{z:<3}.{w:<3} ][ IPN: {ipn} ]"));
                     };
                 };
             } else {
-                if cfg!(debug_assertions) { display(MessageToPrintOrigin::QueryerThread, &format!("[ {p:>17}% ][ {a:>10} / {t} ][ IP: {b:>15} ][ MSG: REJECTED! ]", a=c, p=p, t=LAST_NUMBR, b=iip.clone().to_string().pad_to_width_with_alignment(15, Alignment::Right))); };
+                if cfg!(debug_assertions) { display(MessageToPrintOrigin::QueryerThread, &format!("[ {p:0>17}% ][ {c:>10} / {max_pos} ][ IP: {rejected:>15} ][ MSG: REJECTED! ]", rejected=iip.clone().to_string().pad_to_width_with_alignment(15, Alignment::Right))); };
             };
 
             if found {

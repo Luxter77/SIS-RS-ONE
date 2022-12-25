@@ -2,61 +2,26 @@
 
 use std::fs::OpenOptions;
 use std::sync::atomic::Ordering;
-use std::thread::{sleep, JoinHandle};
-use std::time::Duration;
+use std::thread::JoinHandle;
 
 use std::fs::File;
-use std::io::Write;
 use std::{thread, u128};
 
 use rand::Rng;
 
+mod generators;
 mod generator;
 mod r#static;
 mod display;
+mod workers;
 mod message;
 mod resolv;
 
-use r#static::*;
 use message::{MessageToPrintOrigin, MessageToWrite, MessageToPrint};
 use display::{launch_display_thread, launch_status_thread, display};
-use generator::{generate, count_posibilites};
-use resolv::resolv_worker;
-
-
-fn write_worker(mut out_file: File) {
-    loop {
-        if let Ok( message ) = QUEUE_TO_WRITE.get() {
-            match message {
-                MessageToWrite::ToWrite(ip, host) => { writeln!(&mut out_file, "{a}, {b}", a=ip, b=host).expect("Can't write to out file!"); },
-                MessageToWrite::End => { break },
-                MessageToWrite::EmptyQueue => todo!(),
-            };
-        } else {
-            if WRITER____STOP_SIGNAL.load(Ordering::Relaxed) { break };
-            sleep(Duration::from_millis(SLEEP_TIME * 10));
-        };
-    };
-    display(MessageToPrintOrigin::WriterThread, "[ Write End ]");
-}
-
-fn launch_generator_thread(skip: u128, num: u128, last: u128, zip: u128, zip_flag: bool) -> JoinHandle<(u128, u128)> {
-    display(MessageToPrintOrigin::MainThread, "[ Launching GeneratorThread ]");
-    return thread::Builder::new().name("GeneratorThread".into()).spawn(move || { return generate(skip, num, last, zip, zip_flag); }).unwrap();
-}
-
-fn launch_write_thread(out_file: File) -> JoinHandle<()> {
-    display(MessageToPrintOrigin::MainThread, "[ Launching WriterThread ]");
-    return thread::Builder::new().name("WriterThread".into()).spawn(move || { write_worker(out_file); }).unwrap();
-}
-
-fn launch_worker_threads(worker_threads: &mut Vec<JoinHandle<()>>) {
-    for n in 0..(CORES * 4) { // Starts query worker threads
-        let nam = format!("QueryerThread#{}", n);
-        if cfg!(debug_assertions) { display(MessageToPrintOrigin::MainThread, &format!("[ Launching: {} ]", nam.clone())); };
-        worker_threads.push(thread::Builder::new().name(nam).spawn(move || { resolv_worker(); }).unwrap());
-    };
-}
+use resolv::count_posibilites;
+use r#static::*;
+use workers::*;
 
 /// This function will panic if you hit Ctrl + C more than 255 times xd
 fn ctrl_c_handler() {
@@ -80,14 +45,12 @@ fn main() {
     let mut num:       u128                           = rand::thread_rng().gen::<u128>();
 
     let mut skip:      u128                           = 0u128;
-    
     let mut last:      u128                           = LAST_NUMBR;
-    
-    let mut zip:       u128                           = 0u128;
+    let mut zip:       u32                            = 0u32;
     let mut zip_flag:  bool                           = false;
 
     let     c_last:    u128;
-    let     num_last:  u128;
+    let     num_last:  u32;
     let     out_file:  File;
     
     let     b:         &std::path::Path                  = std::path::Path::new(OUT_FILE_NAME);
@@ -99,7 +62,7 @@ fn main() {
     
     if let Some(r_skip) = std::env::args().nth(2) { skip = r_skip.parse().expect("Invalid skip number (skip number must be an unsinged int)"); };
     if let Some(r_last) = std::env::args().nth(3) { last = r_last.parse().expect("Invalid last number (last number must be an unsinged int)"); };
-    if let Some(r_zip)  = std::env::args().nth(4) { zip = r_zip.parse::<u128>().expect("fuck"); zip_flag = true; };
+    if let Some(r_zip)  = std::env::args().nth(4) { zip  = r_zip.parse::<u32>().expect("fuck"); zip_flag = true; };
      
     assert!(last > skip, "Last number must be greater than the number of skipped iterations.");
     
@@ -107,7 +70,7 @@ fn main() {
     
     let mut worker_threads:    Vec<thread::JoinHandle<()>> = Vec::new();
     
-    let generator_thread:  JoinHandle<(u128, u128)>;
+    let generator_thread:  JoinHandle<(u128, u32)>;
     let display_thread:    JoinHandle<()>;
     
     #[allow(unused_variables)]
@@ -146,7 +109,7 @@ fn main() {
     
     println!("{}", "[ @MAIN_THREAD      ][ Launching DisplayThread ]");
     display_thread   = launch_display_thread();
-        
+
     generator_thread = launch_generator_thread(skip.clone(), num.clone(), last, zip, zip_flag);
     write_thread     = launch_write_thread(out_file);
     
