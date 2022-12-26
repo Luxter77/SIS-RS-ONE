@@ -23,6 +23,8 @@ use resolv::count_posibilites;
 use r#static::*;
 use workers::*;
 
+use crate::generators::IPGenerator;
+
 /// This function will panic if you hit Ctrl + C more than 255 times xd
 fn ctrl_c_handler() {
     println!("{}", match CTL_C_C___STOP_SIGNAL.load(Ordering::Relaxed) {
@@ -48,11 +50,13 @@ fn main() {
     let mut last:      u128                           = LAST_NUMBR;
     let mut zip:       u32                            = 0u32;
     let mut zip_flag:  bool                           = false;
-
-    let     c_last:    u128;
-    let     num_last:  u32;
-    let     out_file:  File;
     
+    
+    let     gen_j:     String;
+    let     c_last:    u128;
+    let     out_file:  File;
+    let     num_last:  u32;
+
     let     b:         &std::path::Path                  = std::path::Path::new(OUT_FILE_NAME);
     
     //parse cli args
@@ -70,7 +74,7 @@ fn main() {
     
     let mut worker_threads:    Vec<thread::JoinHandle<()>> = Vec::new();
     
-    let generator_thread:  JoinHandle<(u128, u32)>;
+    let generator_thread:  JoinHandle<IPGenerator>;
     let display_thread:    JoinHandle<()>;
     
     #[allow(unused_variables)]
@@ -105,9 +109,10 @@ fn main() {
     
     println!("{}", format!("[ @MAIN_THREAD      ][ This run will generate {} valid IPs ]", numspace.clone()));
 
-    println!("{}", "[ @MAIN_THREAD      ][ Starting threads! ]");
+    println!("[ @MAIN_THREAD      ][ Starting threads! ]");
     
-    println!("{}", "[ @MAIN_THREAD      ][ Launching DisplayThread ]");
+    println!("[ @MAIN_THREAD      ][ Launching DisplayThread ]");
+    
     display_thread   = launch_display_thread();
 
     generator_thread = launch_generator_thread(skip.clone(), num.clone(), last, zip, zip_flag);
@@ -118,7 +123,9 @@ fn main() {
     display(MessageToPrintOrigin::MainThread, "[ Launching WorkerThreads ]");
     launch_worker_threads(&mut worker_threads);
     
-    (c_last, num_last) = generator_thread.join().unwrap();
+    let used_generator = generator_thread.join().unwrap();
+
+    (c_last, num_last) = used_generator.gen_state();
     
     if cfg!(debug_assertions) { display(MessageToPrintOrigin::MainThread, "[ We got hereeeeeeeeee ]"); };
     
@@ -141,15 +148,16 @@ fn main() {
     display(MessageToPrintOrigin::MainThread, &format!("[ It appeared after {} iterations. ]",      num_last));
     display(MessageToPrintOrigin::MainThread, "[ - - - - - - - - - - - - - ]");
 
-    if let Some(status_thread) = status_thread {
-        display(MessageToPrintOrigin::MainThread, "[ Waiting for status thread. ]");
-        status_thread.join().unwrap();
-    };
-    
     display(MessageToPrintOrigin::MainThread, "[ Waiting for display thread. ]");
     QUEUE_TO_PRINT.add(MessageToPrint::End);
     display_thread.join().unwrap();
 
+    if let Some(status_thread) = status_thread {
+        println!("[ @MAIN_THREAD      ][ Waiting for status thread. ]");
+        status_thread.join().unwrap();
+    };    
+    
+    
     println!("[ End. ]");
-
+    
 }

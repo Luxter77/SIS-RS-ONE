@@ -20,6 +20,8 @@ pub(crate) const OUT_FILE_NAME:  &str  = "RESOLVED.csv";
 pub(crate) const SLEEP_TIME:     u64   = 10;
 pub(crate) const USE_SYSTEM_DNS: bool  = !(cfg!(feature = "trust-dns"));
 
+pub(crate) const CHECKPOINT_FILE: &str = "./checkpoint.SIS-ONE.json";
+
 /// Stop signal for the thing that generates the numbers
 pub static GENERATOR_STOP_SIGNAL: AtomicBool = AtomicBool::new(false);
 

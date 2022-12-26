@@ -1,6 +1,7 @@
 use std::io::Write;
 
 use crate::{
+    generators::IPGenerator,
     resolv::resolv_worker,
     generator::generate,
     display::display,
@@ -12,7 +13,9 @@ pub(crate) fn write_worker(mut out_file: std::fs::File) {
     loop {
         if let Ok( message ) = QUEUE_TO_WRITE.get() {
             match message {
-                MessageToWrite::ToWrite(ip, host) => { writeln!(&mut out_file, "{a}, {b}", a=ip, b=host).expect("Can't write to out file!"); },
+                MessageToWrite::ToWrite(ip, host) => {
+                    // writeln!(&mut out_file, "{a}, {b}", a=ip, b=host).expect("Can't write to out file!");
+                },
                 MessageToWrite::End => { break },
                 MessageToWrite::EmptyQueue => todo!(),
             };
@@ -24,7 +27,7 @@ pub(crate) fn write_worker(mut out_file: std::fs::File) {
     display(MessageToPrintOrigin::WriterThread, "[ Write End ]");
 }
 
-pub(crate) fn launch_generator_thread(skip: u128, num: u128, last: u128, zip: u32, zip_flag: bool) -> std::thread::JoinHandle<(u128, u32)> {
+pub(crate) fn launch_generator_thread(skip: u128, num: u128, last: u128, zip: u32, zip_flag: bool) -> std::thread::JoinHandle<IPGenerator> {
     display(MessageToPrintOrigin::MainThread, "[ Launching GeneratorThread ]");
     return std::thread::Builder::new().name("GeneratorThread".into()).spawn(move || { return generate(skip, num, last, zip, zip_flag); }).unwrap();
 }

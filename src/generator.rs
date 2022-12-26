@@ -2,18 +2,14 @@ use crate::{r#static::*, display::display, message::{MessageToCheck, MessageToPr
 
 use std::{sync::atomic::Ordering, time::Duration, thread::sleep};
 
-pub(crate) fn generate(skip: u128, num: u128, last: u128, zip: u32, zip_flag: bool) -> (u128, u32) {
+pub(crate) fn generate(skip: u128, num: u128, last: u128, zip: u32, zip_flag: bool) -> IPGenerator {
     let mut generator: IPGenerator;
     
-    generator = IPGenerator::PoorMansIPGenerator(PoorMansIPGenerator::default());
-   
-    if cfg!(feature = "Sequential-Generator") {
-        generator = IPGenerator::SequentialGenerator(SequentialGenerator::default());
-    } else if cfg!(feature = "PRand-LCG") {
-        display(MessageToPrintOrigin::GeneratorThread, &format!("[ WARNING: THE IMPLEMENTATION OF THE FEATURE PRand-LCG IS CURRENTLY BROKEN! ]"));
-        QUEUE_TO_PRINT.add( crate::message::MessageToPrint::Wait(std::time::Duration::from_secs(3)) );
-        generator = IPGenerator::LCGIPGenerator(LCGIPGenerator::new(num, M_PRIMA, C_PRIMA, A_PRIMA));
-    }
+    if let std::io::Result::Ok(gen) = IPGenerator::get_from_save_file() {
+        generator = gen;
+    } else {   
+        generator = IPGenerator::new(num);
+    };
 
     if skip != 0 { generator.gen_skip(skip); };
     if zip_flag  { generator.gen_zip(zip).unwrap(); };
@@ -46,5 +42,10 @@ pub(crate) fn generate(skip: u128, num: u128, last: u128, zip: u32, zip_flag: bo
 
     QUEUE_TO_CHECK.add( MessageToCheck::End );
 
-    return generator.gen_state();
+    display(MessageToPrintOrigin::GeneratorThread,  &match generator.write_to_save_file() {
+        Err(why) => { format!("[ Coult not write to checkpoint file! {why} ][ GeneratorState: {} ]", serde_json::to_string(&generator).unwrap()) },
+        Ok(_)           => { format!("[ Wrote generator state to checkpoint file {CHECKPOINT_FILE} ]") },
+    });
+
+    return generator;
 }
