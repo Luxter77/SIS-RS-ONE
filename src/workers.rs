@@ -14,7 +14,7 @@ pub(crate) fn write_worker(mut out_file: std::fs::File) {
         if let Ok( message ) = QUEUE_TO_WRITE.get() {
             match message {
                 MessageToWrite::ToWrite(ip, host) => {
-                    // writeln!(&mut out_file, "{a}, {b}", a=ip, b=host).expect("Can't write to out file!");
+                    writeln!(&mut out_file, "{a}, {b}", a=ip, b=host).expect("Can't write to out file!");
                 },
                 MessageToWrite::End => { break },
                 MessageToWrite::EmptyQueue => todo!(),
