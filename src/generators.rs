@@ -14,7 +14,21 @@ pub enum IPGenerator {
     LCGIPGenerator(LCGIPGenerator),
 }
 
+#[derive(clap::ValueEnum, Clone, Debug)]
+pub enum NumberGenerators {
+    PoorMansGen,
+    Sequential,
+    LCG,
+}
+
 impl IPGenerator {
+    pub fn can_last(&self) -> bool {
+        match self {
+            IPGenerator::PoorMansIPGenerator(_) => false,
+            IPGenerator::SequentialGenerator(_) => true,
+            IPGenerator::LCGIPGenerator(_)      => true,
+        }
+    }
     pub fn write_to_save_file(&self) -> std::io::Result<()> {
         let content = serde_json::to_string(&self).unwrap();
         match std::fs::write(CHECKPOINT_FILE, content) {
@@ -33,27 +47,30 @@ impl IPGenerator {
             std::io::Result::Err(why) => std::io::Result::Err(why),
         }
     }
-    pub fn new(num: u128) -> Self {
-        let mut generator: Self;
-
-        generator = Self::PoorMansIPGenerator(PoorMansIPGenerator::default());
-        
-        if cfg!(feature = "Sequential-Generator") {
-            generator = IPGenerator::SequentialGenerator(SequentialGenerator::default());
-        } else if cfg!(feature = "PRand-LCG") {
-            display(MessageToPrintOrigin::GeneratorThread, &format!("[ WARNING: THE IMPLEMENTATION OF THE FEATURE PRand-LCG IS CURRENTLY BROKEN! ]"));
-            QUEUE_TO_PRINT.add( crate::message::MessageToPrint::Wait(std::time::Duration::from_secs(3)) );
-            generator = IPGenerator::LCGIPGenerator(LCGIPGenerator::new(num, M_PRIMA, C_PRIMA, A_PRIMA));
-        }
-            
-        return generator;
+    pub fn new(seed: u128, strategy: NumberGenerators, no_continue: bool) -> Self {
+        if !no_continue {
+            if let Ok(gen) = IPGenerator::get_from_save_file() {
+                return gen
+            } else {
+                return Self::new(seed, strategy, true);
+            };
+        } else {
+            return match strategy {
+                NumberGenerators::PoorMansGen => IPGenerator::PoorMansIPGenerator(PoorMansIPGenerator::default()),
+                NumberGenerators::Sequential  => IPGenerator::SequentialGenerator(SequentialGenerator::default()),
+                NumberGenerators::LCG => {
+                    display(MessageToPrintOrigin::GeneratorThread, &format!("[ WARNING: THE IMPLEMENTATION OF THE FEATURE PRand-LCG IS CURRENTLY BROKEN! ]"));
+                    QUEUE_TO_PRINT.add( crate::message::MessageToPrint::Wait(std::time::Duration::from_secs(3)) );
+                    IPGenerator::LCGIPGenerator(LCGIPGenerator::new(seed, M_PRIMA, C_PRIMA, A_PRIMA))
+                },
+            };
+        };
     }
-
     pub fn get_las(&self) -> u128 {
         match self {
             IPGenerator::PoorMansIPGenerator(gen) => gen.las.into(),
             IPGenerator::SequentialGenerator(gen) => gen.las.into(),
-            IPGenerator::LCGIPGenerator(gen) => gen.x, 
+            IPGenerator::LCGIPGenerator(gen)           => gen.x, 
         }
     }
     pub fn gen_skip(&mut self, skip: u128) {

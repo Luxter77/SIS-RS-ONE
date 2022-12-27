@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use crate::{
-    generators::IPGenerator,
+    generators::{NumberGenerators, IPGenerator},
     resolv::resolv_worker,
     generator::generate,
     display::display,
@@ -10,7 +10,7 @@ use crate::{
 };
 
 pub(crate) fn write_worker(mut out_file: std::fs::File) {
-    loop {
+    while !WRITER____STOP_SIGNAL.load(std::sync::atomic::Ordering::Relaxed) {
         if let Ok( message ) = QUEUE_TO_WRITE.get() {
             match message {
                 MessageToWrite::ToWrite(ip, host) => {
@@ -20,16 +20,15 @@ pub(crate) fn write_worker(mut out_file: std::fs::File) {
                 MessageToWrite::EmptyQueue => todo!(),
             };
         } else {
-            if WRITER____STOP_SIGNAL.load(std::sync::atomic::Ordering::Relaxed) { break };
             std::thread::sleep(std::time::Duration::from_millis(SLEEP_TIME * 10));
         };
     };
     display(MessageToPrintOrigin::WriterThread, "[ Write End ]");
 }
 
-pub(crate) fn launch_generator_thread(skip: u128, num: u128, last: u128, zip: u32, zip_flag: bool) -> std::thread::JoinHandle<IPGenerator> {
+pub(crate) fn launch_generator_thread(skip: u128, seed: u128, last: u128, zip: u32, use_zip: bool, no_continue: bool, strategy: NumberGenerators) -> std::thread::JoinHandle<IPGenerator> {
     display(MessageToPrintOrigin::MainThread, "[ Launching GeneratorThread ]");
-    return std::thread::Builder::new().name("GeneratorThread".into()).spawn(move || { return generate(skip, num, last, zip, zip_flag); }).unwrap();
+    return std::thread::Builder::new().name("GeneratorThread".into()).spawn(move || { return generate(skip, seed, last, zip, use_zip, no_continue, strategy); }).unwrap();
 }
 
 pub(crate) fn launch_write_thread(out_file: std::fs::File) -> std::thread::JoinHandle<()> {
@@ -37,10 +36,11 @@ pub(crate) fn launch_write_thread(out_file: std::fs::File) -> std::thread::JoinH
     return std::thread::Builder::new().name("WriterThread".into()).spawn(move || { write_worker(out_file); }).unwrap();
 }
 
-pub(crate) fn launch_worker_threads(worker_threads: &mut Vec<std::thread::JoinHandle<()>>) {
+pub(crate) fn launch_worker_threads(worker_threads: &mut Vec<std::thread::JoinHandle<()>>, t_use_host_resolver: bool, t_use_trust_dns: bool, t_use_system_dns: bool) {
+    display(MessageToPrintOrigin::MainThread, "[ Launching WorkerThreads ]");
     for n in 0..(CORES * 4) { // Starts query worker threads
         let nam = format!("QueryerThread#{}", n);
         if cfg!(debug_assertions) { display(MessageToPrintOrigin::MainThread, &format!("[ Launching: {} ]", nam.clone())); };
-        worker_threads.push(std::thread::Builder::new().name(nam).spawn(move || { resolv_worker(); }).unwrap());
+        worker_threads.push(std::thread::Builder::new().name(nam).spawn(move || { resolv_worker(t_use_host_resolver, t_use_trust_dns, t_use_system_dns); }).unwrap());
     };
 }

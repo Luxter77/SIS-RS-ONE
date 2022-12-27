@@ -10,7 +10,9 @@
 
 [ ] Add TOR sockets ...?
 
-[ ] Refactor feature switches to propper CLI arguments
+[X] Refactor feature switches to propper CLI arguments
+
+[ ] Implement proper sharding (where possible)
 
 ## Look at this funny cat
 

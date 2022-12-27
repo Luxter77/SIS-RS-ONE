@@ -11,70 +11,86 @@ use crate::message::*;
 use crate::r#static::*;
 
 pub fn display(source: MessageToPrintOrigin, msg: &str) {
-    QUEUE_TO_PRINT.add( MessageToPrint::ToDisplay(source, msg.to_owned()) )
+    if cfg!(debug_assertions) {
+        println!("{}", match source {
+            MessageToPrintOrigin::GeneratorThread => format!("[ @GENERATOR_THREAD ]{}", msg),
+            MessageToPrintOrigin::QueryerThread   => format!("[ @QUERYER_THREAD   ]{}", msg),
+            MessageToPrintOrigin::WriterThread    => format!("[ @WRITER_THREAD    ]{}", msg),
+            MessageToPrintOrigin::DisplayThread   => format!("[ @DISPLAY_THREAD   ]{}", msg),
+            MessageToPrintOrigin::MainThread      => format!("[ @MAIN_THREAD      ]{}", msg),
+        });
+        
+        io::stdout().flush().expect("Unable to flush stdout!");
+    } else {
+        QUEUE_TO_PRINT.add( MessageToPrint::ToDisplay(source, msg.to_owned()) )
+    }
 }
 
 fn display_status() {
-    let mut stop_signal_status: [bool;  4];
-    let mut queue_sizes:        [usize; 3];
-    let mut last_items:         (MessageToCheck, MessageToWrite);
+    let mut stop_signal_status:      [bool;  4];
+    let mut prev_stop_signal_status: [bool;  4];
+    
+    let mut queue_sizes:             [usize; 3];
+    let mut prev_queue_sizes:        [usize; 3];
+    
+    let mut last_items:              (MessageToCheck, MessageToWrite);
+    let mut prev_last_items:         (MessageToCheck, MessageToWrite);
 
-    loop {
+    prev_stop_signal_status = [
+        GENERATOR_STOP_SIGNAL.load(Ordering::Relaxed), QUERYER___STOP_SIGNAL.load(Ordering::Relaxed),
+        WRITER____STOP_SIGNAL.load(Ordering::Relaxed), DISPLAY___STOP_SIGNAL.load(Ordering::Relaxed),
+    ];
+    
+    prev_queue_sizes = [ QUEUE_TO_CHECK.size(), QUEUE_TO_WRITE.size(), QUEUE_TO_WRITE.size() ];
+
+    prev_last_items = (
+        match QUEUE_TO_CHECK.peek() { Ok(message) => { message }, Err(_) => { MessageToCheck::EmptyQueue } },
+        match QUEUE_TO_WRITE.peek() { Ok(message) => { message }, Err(_) => { MessageToWrite::EmptyQueue } },
+    );
+
+    QUEUE_TO_PRINT.add(MessageToPrint::ToDisplay(MessageToPrintOrigin::DisplayThread,
+        format!("[ Signal status: {:?}; queue sizes: {:?}; last times: {:?} ]", prev_stop_signal_status, prev_queue_sizes, prev_last_items)
+    ));
+
+    while !DISPLAY___STOP_SIGNAL.load(Ordering::Relaxed) || (prev_last_items == (MessageToCheck::End, MessageToWrite::EmptyQueue)) {
         stop_signal_status = [
-            GENERATOR_STOP_SIGNAL.load(Ordering::Relaxed),
-            QUERYER___STOP_SIGNAL.load(Ordering::Relaxed),
-            WRITER____STOP_SIGNAL.load(Ordering::Relaxed),
-            DISPLAY___STOP_SIGNAL.load(Ordering::Relaxed),
+            GENERATOR_STOP_SIGNAL.load(Ordering::Relaxed), QUERYER___STOP_SIGNAL.load(Ordering::Relaxed),
+            WRITER____STOP_SIGNAL.load(Ordering::Relaxed), DISPLAY___STOP_SIGNAL.load(Ordering::Relaxed),
         ];
-
         
-        queue_sizes = [
-            QUEUE_TO_CHECK.size(),
-            QUEUE_TO_WRITE.size(),
-            QUEUE_TO_WRITE.size(),
-        ];
+        queue_sizes = [ QUEUE_TO_CHECK.size(), QUEUE_TO_WRITE.size(), QUEUE_TO_WRITE.size() ];
 
         last_items = (
-            match QUEUE_TO_CHECK.peek() {
-                Ok(message) => { message },
-                Err(_) => { MessageToCheck::EmptyQueue },
-            },
-            match QUEUE_TO_WRITE.peek() {
-                Ok(message) => { message },
-                Err(_) => { MessageToWrite::EmptyQueue },
-            },
+            match QUEUE_TO_CHECK.peek() { Ok(message) => { message }, Err(_) => { MessageToCheck::EmptyQueue } },
+            match QUEUE_TO_WRITE.peek() { Ok(message) => { message }, Err(_) => { MessageToWrite::EmptyQueue } },
         );
         
+        if (stop_signal_status != prev_stop_signal_status) || (queue_sizes != prev_queue_sizes) || (last_items != prev_last_items) {
+            QUEUE_TO_PRINT.add(MessageToPrint::ToDisplay(
+                MessageToPrintOrigin::DisplayThread,
+                format!("[ Signal status: {:?}; queue sizes: {:?}; last times: {:?} ]", stop_signal_status, queue_sizes, last_items)
+            ));
+        }
 
-        QUEUE_TO_PRINT.add(MessageToPrint::ToDisplay(
-            MessageToPrintOrigin::DisplayThread,
-            format!("[ Signal status: {:?}; queue sizes: {:?}; last times: {:?} ]", stop_signal_status, queue_sizes, last_items)
-        ));
-
-        if DISPLAY___STOP_SIGNAL.load(Ordering::Relaxed) { break };
+        prev_stop_signal_status = stop_signal_status;
+        prev_queue_sizes        = queue_sizes;
+        prev_last_items         = last_items;
 
         sleep(Duration::from_secs_f32(0.3));
     };
 }
 
-pub(crate) fn launch_status_thread() -> Option<JoinHandle<()>> {    
-    let status_thread: Option<JoinHandle<()>>;
-
-    if cfg!(debug_assertions) {
-        display(MessageToPrintOrigin::MainThread, "[ Launching StatusThread ]");
-        status_thread = std::option::Option::Some(thread::Builder::new().name("StatusThread".into()).spawn(move || { display_status(); }).unwrap());
-    } else {
-        status_thread = std::option::Option::None;
-    };
-
-    return status_thread;
+pub(crate) fn launch_status_thread() -> Option<JoinHandle<()>> {
+    println!("{}", "[ @MAIN_THREAD      ][ Launching StatusThread ]");   
+    return std::option::Option::Some(thread::Builder::new().name("StatusThread".into()).spawn(move || { display_status(); }).unwrap());
 }
 
 pub(crate) fn launch_display_thread() -> JoinHandle<()> {    
+    println!("{}", "[ @MAIN_THREAD      ][ Launching DisplayThread ]");
     return thread::Builder::new().name("DisplayThread".into()).spawn(move || { 
         let mut pending: bool = false;
         
-        loop {
+        while !DISPLAY___STOP_SIGNAL.load(Ordering::Relaxed) {
             let mut message: MessageToPrint = MessageToPrint::EmptyQueue;
             
             if QUEUE_TO_PRINT.size() < 100 {
@@ -106,8 +122,6 @@ pub(crate) fn launch_display_thread() -> JoinHandle<()> {
                 
                 pending = true;
             };
-            
-            if DISPLAY___STOP_SIGNAL.load(Ordering::Relaxed) { break };
-        }
+        };
     }).unwrap();
 }

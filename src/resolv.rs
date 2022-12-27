@@ -4,7 +4,6 @@ use dns_lookup::lookup_addr;
 
 use pad::{Alignment, PadStr};
 
-#[cfg(feature = "trust-dns")]
 use trust_dns_resolver::{ Resolver, config::{NameServerConfig, Protocol, ResolverConfig, ResolverOpts} };
 
 use human_sort;
@@ -39,8 +38,7 @@ pub fn count_posibilites(clamp: u128) -> u128 {
     return count.clamp(0u128, clamp);
 }
 
-#[cfg(feature = "trust-dns")]
-fn trust_dns_lookup_addr(lipn: &mut Vec<String>, ip: &Ipv4Addr, resolver: &Resolver) {
+fn trust_dns_lookup_addr(lipn: &mut Vec<String>, ip: &Ipv4Addr, resolver: &Resolver, t_use_host_resolver: bool) {
     if let Ok(res) = resolver.reverse_lookup(IpAddr::V4(ip.to_owned())) {
         let ips: Vec<String> = res.iter().map( |nam| -> String { nam.to_ascii() } ).collect();
         
@@ -48,7 +46,7 @@ fn trust_dns_lookup_addr(lipn: &mut Vec<String>, ip: &Ipv4Addr, resolver: &Resol
             display(MessageToPrintOrigin::QueryerThread, &format!("[ IP HAS MORE THAN ONE ADRESS! -> {:?} ]", ips));
         };
         
-        if cfg!(feature = "host-resolv") {
+        if t_use_host_resolver {
             if lipn.len() > 0 {
                 let mut h_res_conf = ResolverConfig::new();          
                 h_res_conf.add_name_server(NameServerConfig::new(SocketAddr::new(IpAddr::V4(ip.clone()), 53), Protocol::default()));
@@ -62,7 +60,9 @@ fn trust_dns_lookup_addr(lipn: &mut Vec<String>, ip: &Ipv4Addr, resolver: &Resol
     };
 }
 
-pub(crate) fn resolv_worker() {
+pub(crate) fn resolv_worker(t_use_host_resolver: bool, t_use_trust_dns: bool, t_use_system_dns: bool) {
+    let mut resolver: Option<trust_dns_resolver::Resolver> = Option::None;
+
     let mut pending: bool = false;
     let mut found:   bool = false;
     
@@ -76,11 +76,11 @@ pub(crate) fn resolv_worker() {
     let mut p:       f32;
 
     if cfg!(feature = "PRand-LCG") { max_pos = LAST_NUMBR; }
-    #[cfg(feature = "trust-dns")] let resolver: trust_dns_resolver::Resolver = trust_dns_resolver::Resolver::default().unwrap();
+    if t_use_trust_dns {
+        resolver = Some(trust_dns_resolver::Resolver::default().unwrap());
+    }
 
-    loop {
-        if QUERYER___STOP_SIGNAL.load(Ordering::Relaxed) { break };
-        
+    while !QUERYER___STOP_SIGNAL.load(Ordering::Relaxed) {        
         if let Ok( MessageToCheck::End ) = QUEUE_TO_CHECK.peek() { break };
         
         if let Ok( MessageToCheck::ToCheck(p_c, p_iip) ) = QUEUE_TO_CHECK.get() {
@@ -95,11 +95,12 @@ pub(crate) fn resolv_worker() {
                 
                 let     ip:     Ipv4Addr    = Ipv4Addr::from(iip.to_string().parse::<u32>().unwrap());
 
-                if crate::r#static::USE_SYSTEM_DNS {
+                if t_use_system_dns {
                     lipn.push(lookup_addr(&ip.into()).unwrap());
                 } else {
-                    #[cfg(feature = "trust-dns")]
-                    trust_dns_lookup_addr(&mut lipn, &ip, &resolver);
+                    if let Some(ref resolver) = resolver {
+                        trust_dns_lookup_addr(&mut lipn, &ip, resolver, t_use_host_resolver);
+                    };
                 };
                 
                 lipn.sort_by(| a, b | human_sort::compare(a.as_str(), b.as_str()));
@@ -108,7 +109,7 @@ pub(crate) fn resolv_worker() {
                     found = true;
                     let [x, y, z, w] = ip.clone().octets();
                     if ipn != ip.to_string() {
-                        F_COUNT.add_one();
+                        FOUND_COUNT.add_one();
                         display(MessageToPrintOrigin::QueryerThread, &format!("[ {p:0>17}% ][ {c:>10} / {max_pos} ][ IP: {x:<3}.{y:<3}.{z:<3}.{w:<3} ][ DNS: {ipn} ]"));
                         QUEUE_TO_WRITE.add(MessageToWrite::ToWrite(ip.to_string(), ipn) );
                     } else if cfg!(debug_assertions) {
@@ -120,7 +121,7 @@ pub(crate) fn resolv_worker() {
             };
 
             if found {
-                F_D_COUNT.add_one();
+                FOUND_DISTINCT_COUNT.add_one();
                 found = false;
             };
             
