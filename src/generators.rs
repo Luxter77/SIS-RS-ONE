@@ -10,6 +10,13 @@ pub enum IPGenerator {
     LCGIPGenerator(LCGIPGenerator),
 }
 
+#[derive(clap::ValueEnum, Clone, Debug)]
+pub enum NumberGenerators {
+    PoorMansGen,
+    Sequential,
+    LCG,
+}
+
 impl IPGenerator {
     pub fn get_las(&self) -> u128 {
         match self {

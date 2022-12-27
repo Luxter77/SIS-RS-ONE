@@ -7,7 +7,7 @@ use std::thread::JoinHandle;
 use std::fs::File;
 use std::{thread, u128};
 
-use rand::Rng;
+use clap::Parser;
 
 mod generators;
 mod generator;
@@ -23,9 +23,8 @@ use resolv::count_posibilites;
 use r#static::*;
 use workers::*;
 
-/// This function will panic if you hit Ctrl + C more than 255 times xd
 fn ctrl_c_handler() {
-    println!("{}", match CTL_C_C___STOP_SIGNAL.load(Ordering::Relaxed) {
+    println!("{}", match CTL_C_C___STOP_SIGNAL.get() {
         0 => { GENERATOR_STOP_SIGNAL.store(true, Ordering::Relaxed); "[ @CT_C_SIG_HANDLER ][ Keyboard Interrupt recieved, signaling generator thread to stop. ]" },
         1 => { QUERYER___STOP_SIGNAL.store(true, Ordering::Relaxed); "[ @CT_C_SIG_HANDLER ][ Keyboard Interrupt recieved, signaling query threads to stop. ]" },
         2 => { WRITER____STOP_SIGNAL.store(true, Ordering::Relaxed); "[ @CT_C_SIG_HANDLER ][ Keyboard Interrupt recieved, signaling writer thread to stop! ]" },
@@ -33,52 +32,45 @@ fn ctrl_c_handler() {
         _ => { "[ @CT_C_SIG_HANDLER ][ Keyboard Interrupt recieved, signaling no one, lol. ]" },
     });
 
-    CTL_C_C___STOP_SIGNAL.fetch_add(1u8, Ordering::Relaxed);
+    // now with 100% less integer overflow
+    CTL_C_C___STOP_SIGNAL.add_one();
 }
 
 fn set_cc_handler() {
     ctrlc::set_handler( move || { ctrl_c_handler(); }).expect("Error setting Ctrl-C handler");
 }
 
+#[inline(always)]
+fn get_outfile(fpath: &str) -> File {
+    let out_file: File;
+    let out_path: &std::path::Path = std::path::Path::new(fpath);
+    if out_path.exists() {
+        out_file = OpenOptions::new().append(true).open(out_path.clone()).expect("Could not open existing file!");
+        println!("{}", format!("[ @MAIN_THREAD      ][ Using existing file: {} ]", out_path.display()));
+    } else {
+        out_file = OpenOptions::new().create(true).write(true).open(out_path.clone()).expect("Could not create output file!");
+        println!("{}", format!("[ @MAIN_THREAD      ][ Created new file: {} ]", out_path.display()));
+        QUEUE_TO_WRITE.add(MessageToWrite::ToWrite(String::from("IP"), String::from("HOSTNAME")));
+    };
+    return out_file
+}
+
 #[allow(unused_variables)]
 fn main() {
-    let mut num:       u128                           = rand::thread_rng().gen::<u128>();
-
-    let mut skip:      u128                           = 0u128;
-    let mut last:      u128                           = LAST_NUMBR;
-    let mut zip:       u32                            = 0u32;
-    let mut zip_flag:  bool                           = false;
-
+    let     args:      CommandLineArguments = CommandLineArguments::parse().seed(); 
+    
     let     c_last:    u128;
-    let     num_last:  u32;
     let     out_file:  File;
-    
-    let     b:         &std::path::Path                  = std::path::Path::new(OUT_FILE_NAME);
-    
-    //parse cli args
-    if let Some(r_seed) = std::env::args().nth(1) {
-        num = r_seed.parse().expect("Invalid Seed (seed must be an unsinged int)")
-    };
-    
-    if let Some(r_skip) = std::env::args().nth(2) { skip = r_skip.parse().expect("Invalid skip number (skip number must be an unsinged int)"); };
-    if let Some(r_last) = std::env::args().nth(3) { last = r_last.parse().expect("Invalid last number (last number must be an unsinged int)"); };
-    if let Some(r_zip)  = std::env::args().nth(4) { zip  = r_zip.parse::<u32>().expect("fuck"); zip_flag = true; };
-     
-    assert!(last > skip, "Last number must be greater than the number of skipped iterations.");
-    
-    set_cc_handler();
-    
-    let mut worker_threads:    Vec<thread::JoinHandle<()>> = Vec::new();
-    
-    let generator_thread:  JoinHandle<(u128, u32)>;
-    let display_thread:    JoinHandle<()>;
-    
-    #[allow(unused_variables)]
-    let mut status_thread:     std::option::Option<JoinHandle<()>> = std::option::Option::None;
-    
-    let write_thread:      JoinHandle<()>;
+    let     num_last:  u32;
 
-    let     numspace:  u128                           = count_posibilites(last.clone() - skip.clone());
+    let     numspace:           u128 = count_posibilites(args.last - args.skip);    
+    let mut worker_threads:     Vec<thread::JoinHandle<()>> = Vec::new();
+    let     generator_thread:   JoinHandle<(u128, u32)>;
+    let     display_thread:     JoinHandle<()>;
+    let mut status_thread:      std::option::Option<JoinHandle<()>> = std::option::Option::None;
+    let     write_thread:       JoinHandle<()>;
+    
+    assert!(args.last > args.skip, "Last number must be greater than the number of skipped iterations.");
     
     let orig_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move | panic_info | {
@@ -86,41 +78,24 @@ fn main() {
         std::process::exit(1);
     }));
     
-    if b.exists() {
-        out_file = OpenOptions::new().append(true).open(b.clone()).expect("Could not open existing file!");
-        println!("{}", format!("[ @MAIN_THREAD      ][ Using existing file: {} ]", b.display()));
-    } else {
-        out_file = OpenOptions::new().create(true).write(true).open(b.clone()).expect("Could not create output file!");
-        println!("{}", format!("[ @MAIN_THREAD      ][ Created new file: {} ]", b.display()));
-        QUEUE_TO_WRITE.add(MessageToWrite::ToWrite(String::from("IP"), String::from("HOSTNAME")));
-    };
-
-    println!("{}", format!("[ @MAIN_THREAD      ][ The seed is {} ]", num));
+    out_file = get_outfile(&args.outfile);
     
-    // ```(A_PRIMA * num + C_PRIMA) % M_PRIMA``` but ```A_PRIMA * num``` may not fit on a u128
-    // so we aply some funky math to keep the numbers down...
-    num = (((A_PRIMA % M_PRIMA) * (num % M_PRIMA)) % M_PRIMA) + (C_PRIMA % M_PRIMA);
+    println!("{}", format!("[ @MAIN_THREAD      ][ The seed is {} ]", args.seed));
+    println!("{}", format!("[ @MAIN_THREAD      ][ This run will generate {} valid IPs ]", numspace));
     
-    println!("{}", format!("[ @MAIN_THREAD      ][ First number is: {} ]", num.clone()));
-    
-    println!("{}", format!("[ @MAIN_THREAD      ][ This run will generate {} valid IPs ]", numspace.clone()));
+    set_cc_handler();
 
     println!("{}", "[ @MAIN_THREAD      ][ Starting threads! ]");
     
-    println!("{}", "[ @MAIN_THREAD      ][ Launching DisplayThread ]");
-    display_thread   = launch_display_thread();
+    display_thread     = launch_display_thread();
+    generator_thread   = launch_generator_thread(args.skip, args.seed, args.last, args.zip, args.use_zip, args.generator_strategy);
+    write_thread       = launch_write_thread(out_file);
+    if args.debug_status {
+        status_thread  = launch_status_thread();
+    };
+    launch_worker_threads(&mut worker_threads, args.use_host_resolver, args.use_trust_dns, args.use_system_dns);
 
-    generator_thread = launch_generator_thread(skip.clone(), num.clone(), last, zip, zip_flag);
-    write_thread     = launch_write_thread(out_file);
-    
-    if cfg!(debug_assertions) { status_thread  = launch_status_thread(); };
-    
-    display(MessageToPrintOrigin::MainThread, "[ Launching WorkerThreads ]");
-    launch_worker_threads(&mut worker_threads);
-    
     (c_last, num_last) = generator_thread.join().unwrap();
-    
-    if cfg!(debug_assertions) { display(MessageToPrintOrigin::MainThread, "[ We got hereeeeeeeeee ]"); };
     
     display(MessageToPrintOrigin::MainThread, "[ waiting for worker threads ]");
     while let Some(cur_thread) = worker_threads.pop() {
@@ -135,9 +110,9 @@ fn main() {
     write_thread.join().unwrap();
     
     display(MessageToPrintOrigin::MainThread, "[ - - - - - - - - - - - - - ]");
-    display(MessageToPrintOrigin::MainThread, &format!("[ We started @ {} Iterations ]",            skip));
+    display(MessageToPrintOrigin::MainThread, &format!("[ We started @ {} Iterations ]",            args.skip));
     display(MessageToPrintOrigin::MainThread, &format!("[ The last number was => {} ]",             c_last));
-    display(MessageToPrintOrigin::MainThread, &format!("[ We found {} records ({} idstinct IPs out of {} in usable space) ]", F_COUNT.get(), F_D_COUNT.get(), numspace));
+    display(MessageToPrintOrigin::MainThread, &format!("[ We found {} records ({} idstinct IPs out of {} in usable space) ]", FOUND_COUNT.get(), FOUND_DISTINCT_COUNT.get(), numspace));
     display(MessageToPrintOrigin::MainThread, &format!("[ It appeared after {} iterations. ]",      num_last));
     display(MessageToPrintOrigin::MainThread, "[ - - - - - - - - - - - - - ]");
 
