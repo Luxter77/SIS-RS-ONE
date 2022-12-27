@@ -1,9 +1,13 @@
-use rand::{seq::SliceRandom, rngs::ThreadRng};
 
-/// Roll your own random generator they say, after all, what can go wrong
-///
-/// Spoilers, It's not random at all.
-#[derive(Debug, Clone)]
+use serde::{Serialize, Deserialize};
+
+use rand::{prelude::SliceRandom};
+use rand_chacha::{ChaCha12Rng, rand_core::SeedableRng};
+
+use crate::{message::MessageToPrintOrigin, r#static::*, display::display};
+
+/// Roll your own random generator they say, what could go wrong, they say...
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum IPGenerator {
     PoorMansIPGenerator(PoorMansIPGenerator),
     SequentialGenerator(SequentialGenerator),
@@ -18,11 +22,55 @@ pub enum NumberGenerators {
 }
 
 impl IPGenerator {
+    pub fn can_last(&self) -> bool {
+        match self {
+            IPGenerator::PoorMansIPGenerator(_) => false,
+            IPGenerator::SequentialGenerator(_) => true,
+            IPGenerator::LCGIPGenerator(_)      => true,
+        }
+    }
+    pub fn write_to_save_file(&self) -> std::io::Result<()> {
+        let content = serde_json::to_string(&self).unwrap();
+        match std::fs::write(CHECKPOINT_FILE, content) {
+            Ok(_) => std::io::Result::Ok(()),
+            Err(why) => { std::io::Result::Err(why) },
+        }
+    }
+    pub fn get_from_save_file() -> std::io::Result<Self> {
+        match std::fs::read_to_string(CHECKPOINT_FILE) {
+            std::io::Result::Ok(json) => {
+                match serde_json::from_str(&json) {
+                    Ok(data) => std::io::Result::Ok(data),
+                    Err(why) => { panic!("{why}") },
+                }
+            },
+            std::io::Result::Err(why) => std::io::Result::Err(why),
+        }
+    }
+    pub fn new(seed: u128, strategy: NumberGenerators, no_continue: bool) -> Self {
+        if !no_continue {
+            if let Ok(gen) = IPGenerator::get_from_save_file() {
+                return gen
+            } else {
+                return Self::new(seed, strategy, true);
+            };
+        } else {
+            return match strategy {
+                NumberGenerators::PoorMansGen => IPGenerator::PoorMansIPGenerator(PoorMansIPGenerator::default()),
+                NumberGenerators::Sequential  => IPGenerator::SequentialGenerator(SequentialGenerator::default()),
+                NumberGenerators::LCG => {
+                    display(MessageToPrintOrigin::GeneratorThread, &format!("[ WARNING: THE IMPLEMENTATION OF THE FEATURE PRand-LCG IS CURRENTLY BROKEN! ]"));
+                    QUEUE_TO_PRINT.add( crate::message::MessageToPrint::Wait(std::time::Duration::from_secs(3)) );
+                    IPGenerator::LCGIPGenerator(LCGIPGenerator::new(seed, M_PRIMA, C_PRIMA, A_PRIMA))
+                },
+            };
+        };
+    }
     pub fn get_las(&self) -> u128 {
         match self {
             IPGenerator::PoorMansIPGenerator(gen) => gen.las.into(),
             IPGenerator::SequentialGenerator(gen) => gen.las.into(),
-            IPGenerator::LCGIPGenerator(gen) => gen.x, 
+            IPGenerator::LCGIPGenerator(gen)           => gen.x, 
         }
     }
     pub fn gen_skip(&mut self, skip: u128) {
@@ -55,6 +103,8 @@ impl IPGenerator {
     }
 }
 
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GeneratorMessage {
     Normal(u128, u32),
     Looped(u128, u32),
@@ -62,7 +112,7 @@ pub enum GeneratorMessage {
 
 pub trait ZippableNumberGenerator { fn zip(&mut self, zip: u32) -> Result<u32, &str>; }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SequentialGenerator {
     dir: SequentialGeneratorDirection,
     pub cn: u32,
@@ -74,7 +124,7 @@ pub struct SequentialGenerator {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SequentialGeneratorDirection {
     Forward, Backward,
 }
@@ -147,7 +197,7 @@ impl NumberGenerator for SequentialGenerator {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PoorMansIPGenerator {
     xs: Vec<u8>,
     ys: Vec<u8>,
@@ -158,14 +208,14 @@ pub struct PoorMansIPGenerator {
     nz: usize,
     nw: usize,
     pub cn: u32,
-    rng: ThreadRng,
+    rng: ChaCha12Rng,
     pub las: u32,
 }
 
 impl Default for PoorMansIPGenerator {
     fn default() -> Self {
-        let mut rng = rand::thread_rng();
-
+        let mut rng: ChaCha12Rng = ChaCha12Rng::from_rng(rand::thread_rng()).unwrap();
+        
         let mut xs = Vec::new(); xs.extend(0..=255); xs.shuffle(&mut rng);
         let mut ys = Vec::new(); ys.extend(0..=255); ys.shuffle(&mut rng);
         let mut zs = Vec::new(); zs.extend(0..=255); zs.shuffle(&mut rng);
@@ -186,7 +236,7 @@ impl Default for PoorMansIPGenerator {
 }
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LCGIPGenerator {
     pub x: u128,
     m: u128,

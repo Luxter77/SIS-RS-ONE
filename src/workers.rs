@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use crate::{
-    generators::NumberGenerators,
+    generators::{NumberGenerators, IPGenerator},
     resolv::resolv_worker,
     generator::generate,
     display::display,
@@ -13,7 +13,9 @@ pub(crate) fn write_worker(mut out_file: std::fs::File) {
     while !WRITER____STOP_SIGNAL.load(std::sync::atomic::Ordering::Relaxed) {
         if let Ok( message ) = QUEUE_TO_WRITE.get() {
             match message {
-                MessageToWrite::ToWrite(ip, host) => { writeln!(&mut out_file, "{a}, {b}", a=ip, b=host).expect("Can't write to out file!"); },
+                MessageToWrite::ToWrite(ip, host) => {
+                    writeln!(&mut out_file, "{a}, {b}", a=ip, b=host).expect("Can't write to out file!");
+                },
                 MessageToWrite::End => { break },
                 MessageToWrite::EmptyQueue => todo!(),
             };
@@ -24,9 +26,9 @@ pub(crate) fn write_worker(mut out_file: std::fs::File) {
     display(MessageToPrintOrigin::WriterThread, "[ Write End ]");
 }
 
-pub(crate) fn launch_generator_thread(skip: u128, seed: u128, last: u128, zip: u32, use_zip: bool, strategy: NumberGenerators) -> std::thread::JoinHandle<(u128, u32)> {
+pub(crate) fn launch_generator_thread(skip: u128, seed: u128, last: u128, zip: u32, use_zip: bool, no_continue: bool, strategy: NumberGenerators) -> std::thread::JoinHandle<IPGenerator> {
     display(MessageToPrintOrigin::MainThread, "[ Launching GeneratorThread ]");
-    return std::thread::Builder::new().name("GeneratorThread".into()).spawn(move || { return generate(skip, seed, last, zip, use_zip, strategy); }).unwrap();
+    return std::thread::Builder::new().name("GeneratorThread".into()).spawn(move || { return generate(skip, seed, last, zip, use_zip, no_continue, strategy); }).unwrap();
 }
 
 pub(crate) fn launch_write_thread(out_file: std::fs::File) -> std::thread::JoinHandle<()> {

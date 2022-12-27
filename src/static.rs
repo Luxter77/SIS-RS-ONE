@@ -21,6 +21,8 @@ pub(crate) const QUEUE_LIMIT:    usize = CORES * 5;
 pub(crate) const OUT_FILE_NAME:  &str  = "RESOLVED.csv";
 pub(crate) const SLEEP_TIME:     u64   = 10;
 
+pub(crate) const CHECKPOINT_FILE: &str = "./checkpoint.SIS-ONE.json";
+
 /// Stop signal for the thing that generates the numbers
 pub static GENERATOR_STOP_SIGNAL: AtomicBool = AtomicBool::new(false);
 
@@ -151,6 +153,7 @@ pub(crate) struct CommandLineArguments {
     #[arg(short, long, default_value_t = 0u32)]                                             pub zip:                u32,
     #[arg(long, default_value_t = false)]                                                   pub use_zip:            bool,
     #[arg(short, long, default_value_t = String::from(OUT_FILE_NAME))]                      pub outfile:            String,
+    #[arg(long, default_value_t = false)]                                                   pub no_continue:        bool,
     // #[arg(long, default_value_t = 1u8, value_parser = clap::value_parser!(u8).range(1..))]          pub shards:             u8,
     // #[arg(long, default_value_t = 1u8, value_parser = clap::value_parser!(u8).range(1..))]          pub shard:              u8,
     #[arg(short, long, default_value_t = NumberGenerators::PoorMansGen, value_enum)]        pub generator_strategy: NumberGenerators,

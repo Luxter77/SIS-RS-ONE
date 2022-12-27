@@ -2,16 +2,8 @@ use crate::{r#static::*, display::display, message::{MessageToCheck, MessageToPr
 
 use std::{sync::atomic::Ordering, time::Duration, thread::sleep};
 
-pub(crate) fn generate(skip: u128, seed: u128, last: u128, zip: u32, use_zip: bool, strategy: NumberGenerators) -> (u128, u32) {
-    let (use_las, mut generator): (bool, IPGenerator) = match strategy {
-        NumberGenerators::PoorMansGen => (false, IPGenerator::PoorMansIPGenerator(PoorMansIPGenerator::default())),
-        NumberGenerators::Sequential  => (true,  IPGenerator::SequentialGenerator(SequentialGenerator::default())),
-        NumberGenerators::LCG => {
-            display(MessageToPrintOrigin::GeneratorThread, &format!("[ WARNING: THE IMPLEMENTATION OF THE FEATURE PRand-LCG IS CURRENTLY BROKEN! ]"));
-            QUEUE_TO_PRINT.add( crate::message::MessageToPrint::Wait(std::time::Duration::from_secs(3)) );
-            (true, IPGenerator::LCGIPGenerator(LCGIPGenerator::new(seed, M_PRIMA, C_PRIMA, A_PRIMA)))
-        },
-    };
+pub(crate) fn generate(skip: u128, seed: u128, last: u128, zip: u32, use_zip: bool, no_continue: bool, strategy: NumberGenerators) -> IPGenerator {
+    let mut generator: IPGenerator = IPGenerator::new(seed, strategy, no_continue);
 
     if skip != 0 { generator.gen_skip(skip); };
     if use_zip   { generator.gen_zip(zip).unwrap(); };
@@ -24,7 +16,7 @@ pub(crate) fn generate(skip: u128, seed: u128, last: u128, zip: u32, use_zip: bo
                 display(MessageToPrintOrigin::GeneratorThread, "[ We went all the way arround!!!1!!11!1one!!1!111 ]"); break;
             };
 
-            if use_las && last == generator.get_las() {
+            if generator.can_last() && (last == generator.get_las()) {
                 display(MessageToPrintOrigin::GeneratorThread, "[ We reached the stipulated end! ]"); break;
             };
 
@@ -43,5 +35,10 @@ pub(crate) fn generate(skip: u128, seed: u128, last: u128, zip: u32, use_zip: bo
 
     QUEUE_TO_CHECK.add( MessageToCheck::End );
 
-    return generator.gen_state();
+    display(MessageToPrintOrigin::GeneratorThread,  &match generator.write_to_save_file() {
+        Err(why) => { format!("[ Coult not write to checkpoint file! {why} ][ GeneratorState: {} ]", serde_json::to_string(&generator).unwrap()) },
+        Ok(_)           => { format!("[ Wrote generator state to checkpoint file {CHECKPOINT_FILE} ]") },
+    });
+
+    return generator;
 }
