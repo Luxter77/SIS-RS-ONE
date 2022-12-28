@@ -166,7 +166,13 @@ impl ZippableNumberGenerator for SequentialGenerator {
 }
 
 impl NumberGenerator for SequentialGenerator {
-    fn skip(&mut self, skip: u128) { self.cn = skip as u32; }
+    fn skip(&mut self, skip: u128) {
+        self.cn +=  skip as u32;
+        self.xn +=  skip as u32 & 0xFF;
+        self.yn += (skip as u32 >> 8) & 0xFF;
+        self.zn += (skip as u32 >> 16) & 0xFF;
+        self.wn += (skip as u32 >> 24) & 0xFF;
+    }
     fn next(&mut self) -> GeneratorMessage {
         self.cn += 1;
 
@@ -191,7 +197,7 @@ impl NumberGenerator for SequentialGenerator {
             },
         }
 
-        self.las = ((((self.xn as u128) * 255 + (self.yn as u128)) * 255 + (self.zn as u128)) * 255 + (self.wn as u128)) as u32;
+        self.las = ((((self.wn as u128) * 255 + (self.zn as u128)) * 255 + (self.yn as u128)) * 255 + (self.xn as u128)) as u32;
 
         return GeneratorMessage::Normal(self.cn.into(), self.las);
     }
@@ -222,10 +228,10 @@ impl Default for PoorMansIPGenerator {
         let mut ws = Vec::new(); ws.extend(0..=255); ws.shuffle(&mut rng);
         
         let new: Self = Self {
-            xs: xs, nx: 0,   
-            ys: ys, ny: 0,  
-            zs: zs, nz: 0,  
-            ws: ws, nw: 0,  
+            xs: xs, nx: 0,
+            ys: ys, ny: 0,
+            zs: zs, nz: 0,
+            ws: ws, nw: 0,
             rng: rng,
             las: 0  ,
             cn:  0  ,

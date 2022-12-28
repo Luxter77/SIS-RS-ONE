@@ -27,8 +27,8 @@ pub fn display(source: MessageToPrintOrigin, msg: &str) {
 }
 
 fn display_status() {
-    let mut stop_signal_status:      [bool;  4];
-    let mut prev_stop_signal_status: [bool;  4];
+    let mut stop_signal_status:      [bool;  5];
+    let mut prev_stop_signal_status: [bool;  5];
     
     let mut queue_sizes:             [usize; 3];
     let mut prev_queue_sizes:        [usize; 3];
@@ -37,6 +37,7 @@ fn display_status() {
     let mut prev_last_items:         (MessageToCheck, MessageToWrite);
 
     prev_stop_signal_status = [
+        READY___SET_GO_SIGNAL.load(Ordering::Relaxed),
         GENERATOR_STOP_SIGNAL.load(Ordering::Relaxed), QUERYER___STOP_SIGNAL.load(Ordering::Relaxed),
         WRITER____STOP_SIGNAL.load(Ordering::Relaxed), DISPLAY___STOP_SIGNAL.load(Ordering::Relaxed),
     ];
@@ -54,6 +55,7 @@ fn display_status() {
 
     while !DISPLAY___STOP_SIGNAL.load(Ordering::Relaxed) || (prev_last_items == (MessageToCheck::End, MessageToWrite::EmptyQueue)) {
         stop_signal_status = [
+            READY___SET_GO_SIGNAL.load(Ordering::Relaxed),
             GENERATOR_STOP_SIGNAL.load(Ordering::Relaxed), QUERYER___STOP_SIGNAL.load(Ordering::Relaxed),
             WRITER____STOP_SIGNAL.load(Ordering::Relaxed), DISPLAY___STOP_SIGNAL.load(Ordering::Relaxed),
         ];
@@ -89,6 +91,7 @@ pub(crate) fn launch_display_thread() -> JoinHandle<()> {
     println!("{}", "[ @MAIN_THREAD      ][ Launching DisplayThread ]");
     return thread::Builder::new().name("DisplayThread".into()).spawn(move || { 
         let mut pending: bool = false;
+        
         
         while !DISPLAY___STOP_SIGNAL.load(Ordering::Relaxed) {
             let mut message: MessageToPrint = MessageToPrint::EmptyQueue;

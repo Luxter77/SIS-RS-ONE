@@ -26,9 +26,9 @@ pub(crate) fn write_worker(mut out_file: std::fs::File) {
     display(MessageToPrintOrigin::WriterThread, "[ Write End ]");
 }
 
-pub(crate) fn launch_generator_thread(skip: u128, seed: u128, last: u128, zip: u32, use_zip: bool, no_continue: bool, strategy: NumberGenerators) -> std::thread::JoinHandle<IPGenerator> {
+pub(crate) fn launch_generator_thread(mut generator_handle: ThreadHandler<IPGenerator>, worker_handles: ThreadHandler<()>, skip: u128, seed: u128, last: u128, zip: u32, use_zip: bool, no_continue: bool, strategy: NumberGenerators) {
     display(MessageToPrintOrigin::MainThread, "[ Launching GeneratorThread ]");
-    return std::thread::Builder::new().name("GeneratorThread".into()).spawn(move || { return generate(skip, seed, last, zip, use_zip, no_continue, strategy); }).unwrap();
+    generator_handle.add(std::thread::Builder::new().name("GeneratorThread".into()).spawn(move || { return generate(skip, seed, last, zip, use_zip, no_continue, strategy, worker_handles); }).unwrap());
 }
 
 pub(crate) fn launch_write_thread(out_file: std::fs::File) -> std::thread::JoinHandle<()> {
@@ -36,11 +36,11 @@ pub(crate) fn launch_write_thread(out_file: std::fs::File) -> std::thread::JoinH
     return std::thread::Builder::new().name("WriterThread".into()).spawn(move || { write_worker(out_file); }).unwrap();
 }
 
-pub(crate) fn launch_worker_threads(worker_threads: &mut Vec<std::thread::JoinHandle<()>>, t_use_host_resolver: bool, t_use_trust_dns: bool, t_use_system_dns: bool) {
+pub(crate) fn launch_worker_threads(generator_handle: ThreadHandler<IPGenerator>, mut worker_handles: ThreadHandler<()>, t_use_host_resolver: bool, t_use_trust_dns: bool, t_use_system_dns: bool) {
     display(MessageToPrintOrigin::MainThread, "[ Launching WorkerThreads ]");
     for n in 0..(CORES * 4) { // Starts query worker threads
-        let nam = format!("QueryerThread#{}", n);
+        let (nam, gen_threads): (String, ThreadHandler<IPGenerator>) = (format!("QueryerThread#{}", n), generator_handle.clone());
         if cfg!(debug_assertions) { display(MessageToPrintOrigin::MainThread, &format!("[ Launching: {} ]", nam.clone())); };
-        worker_threads.push(std::thread::Builder::new().name(nam).spawn(move || { resolv_worker(t_use_host_resolver, t_use_trust_dns, t_use_system_dns); }).unwrap());
+        worker_handles.add(std::thread::Builder::new().name(nam).spawn(move || { resolv_worker(t_use_host_resolver, t_use_trust_dns, t_use_system_dns, gen_threads); }).unwrap());
     };
 }

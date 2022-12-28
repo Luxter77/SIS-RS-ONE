@@ -2,7 +2,7 @@
 
 use dns_lookup::lookup_addr;
 
-use pad::{Alignment, PadStr};
+// use pad::{Alignment, PadStr};
 
 use trust_dns_resolver::{ Resolver, config::{NameServerConfig, Protocol, ResolverConfig, ResolverOpts} };
 
@@ -13,22 +13,28 @@ use std::{
     sync::atomic::Ordering,
 };
 
-use crate::message::*;
+use crate::{message::*, generators::IPGenerator};
 use crate::r#static::*;
 use crate::display::display;
 
-fn check_reserved(num: u32) -> bool {
+pub enum ReservedResoult {
+    Valid,
+    Skip(u32),
+    Overflow,
+}
+
+pub fn check_reserved(num: u32) -> ReservedResoult {
     if num > (MAX_IIP) {
-        return false;
+        return ReservedResoult::Overflow;
     };
 
     for (start, end) in NO_GO_RANGES {
         if ((start) <= num) && (num <= (end)) {
-            return false;
+            return ReservedResoult::Skip(end.saturating_sub(num).saturating_add(1));
         };
     };
 
-    return true;
+    return ReservedResoult::Valid;
 }
 
 /// Counts how many posible distinct numbers can this program (using current filters) generate
@@ -60,7 +66,7 @@ fn trust_dns_lookup_addr(lipn: &mut Vec<String>, ip: &Ipv4Addr, resolver: &Resol
     };
 }
 
-pub(crate) fn resolv_worker(t_use_host_resolver: bool, t_use_trust_dns: bool, t_use_system_dns: bool) {
+pub(crate) fn resolv_worker(t_use_host_resolver: bool, t_use_trust_dns: bool, t_use_system_dns: bool, mut generator_handle: ThreadHandler<IPGenerator>) {
     let mut resolver: Option<trust_dns_resolver::Resolver> = Option::None;
 
     let mut pending: bool = false;
@@ -80,45 +86,49 @@ pub(crate) fn resolv_worker(t_use_host_resolver: bool, t_use_trust_dns: bool, t_
         resolver = Some(trust_dns_resolver::Resolver::default().unwrap());
     }
 
+    while !READY___SET_GO_SIGNAL.load(Ordering::Relaxed) {};
+
     while !QUERYER___STOP_SIGNAL.load(Ordering::Relaxed) {        
         if let Ok( MessageToCheck::End ) = QUEUE_TO_CHECK.peek() { break };
         
         if let Ok( MessageToCheck::ToCheck(p_c, p_iip) ) = QUEUE_TO_CHECK.get() {
             (c, iip, pending) = (p_c.clone(), p_iip.clone(), true);
+        } else {
+            generator_handle.unpark();
         };
 
         if pending {
             p = c as f32 * 100.0f32 / max_pos as f32;
-
-            if check_reserved(iip.clone()) {
-                let mut lipn:   Vec<String> = Vec::new();
-                
-                let     ip:     Ipv4Addr    = Ipv4Addr::from(iip.to_string().parse::<u32>().unwrap());
-
-                if t_use_system_dns {
-                    lipn.push(lookup_addr(&ip.into()).unwrap());
-                } else {
-                    if let Some(ref resolver) = resolver {
-                        trust_dns_lookup_addr(&mut lipn, &ip, resolver, t_use_host_resolver);
-                    };
-                };
-                
-                lipn.sort_by(| a, b | human_sort::compare(a.as_str(), b.as_str()));
-                
-                for ipn in lipn {
-                    found = true;
-                    let [x, y, z, w] = ip.clone().octets();
-                    if ipn != ip.to_string() {
-                        FOUND_COUNT.add_one();
-                        display(MessageToPrintOrigin::QueryerThread, &format!("[ {p:0>17}% ][ {c:>10} / {max_pos} ][ IP: {x:<3}.{y:<3}.{z:<3}.{w:<3} ][ DNS: {ipn} ]"));
-                        QUEUE_TO_WRITE.add(MessageToWrite::ToWrite(ip.to_string(), ipn) );
-                    } else if cfg!(debug_assertions) {
-                        display(MessageToPrintOrigin::QueryerThread, &format!("[ {p:0>17}% ][ {c:>10} / {max_pos} ][IP: {x:<3}.{y:<3}.{z:<3}.{w:<3} ][ IPN: {ipn} ]"));
-                    };
-                };
+            
+            // if check_reserved(iip.clone()) {
+            let mut lipn:   Vec<String> = Vec::new();
+            
+            let     ip:     Ipv4Addr    = Ipv4Addr::from(iip.to_string().parse::<u32>().unwrap());
+            
+            if t_use_system_dns {
+                lipn.push(lookup_addr(&ip.into()).unwrap());
             } else {
-                if cfg!(debug_assertions) { display(MessageToPrintOrigin::QueryerThread, &format!("[ {p:0>17}% ][ {c:>10} / {max_pos} ][ IP: {rejected:>15} ][ MSG: REJECTED! ]", rejected=iip.clone().to_string().pad_to_width_with_alignment(15, Alignment::Right))); };
+                if let Some(ref resolver) = resolver {
+                    trust_dns_lookup_addr(&mut lipn, &ip, resolver, t_use_host_resolver);
+                };
             };
+            
+            lipn.sort_by(| a, b | human_sort::compare(a.as_str(), b.as_str()));
+            
+            for ipn in lipn {
+                found = true;
+                let [x, y, z, w] = ip.clone().octets();
+                if ipn != ip.to_string() {
+                    FOUND_COUNT.add_one();
+                    display(MessageToPrintOrigin::QueryerThread, &format!("[ {p:0>17}% ][ {c:>10} / {max_pos} ][ IP: {x:<3}.{y:<3}.{z:<3}.{w:<3} ][ DNS: {ipn} ]"));
+                    QUEUE_TO_WRITE.add(MessageToWrite::ToWrite(ip.to_string(), ipn) );
+                } else if cfg!(debug_assertions) {
+                    display(MessageToPrintOrigin::QueryerThread, &format!("[ {p:0>17}% ][ {c:>10} / {max_pos} ][IP: {x:<3}.{y:<3}.{z:<3}.{w:<3} ][ IPN: {ipn} ]"));
+                };
+            };
+            // } else {
+            //     if cfg!(debug_assertions) { display(MessageToPrintOrigin::QueryerThread, &format!("[ {p:0>17}% ][ {c:>10} / {max_pos} ][ IP: {rejected:>15} ][ MSG: REJECTED! ]", rejected=iip.clone().to_string().pad_to_width_with_alignment(15, Alignment::Right))); };
+            // };
 
             if found {
                 FOUND_DISTINCT_COUNT.add_one();
@@ -127,7 +137,7 @@ pub(crate) fn resolv_worker(t_use_host_resolver: bool, t_use_trust_dns: bool, t_
             
             pending = false;
         } else {
-            std::thread::sleep(std::time::Duration::from_millis(SLEEP_TIME * 3));
+            std::thread::park_timeout(std::time::Duration::from_millis(SLEEP_TIME * 3));
         };
 
         // if cfg!(debug_assertions) { display(MessageToPrintOrigin::QueryerThread, &format!("[ to_write queue size is currently: {} items long. ]", QUEUE_TO_CHECK.size())); };

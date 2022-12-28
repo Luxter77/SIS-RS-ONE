@@ -5,7 +5,6 @@ use std::sync::atomic::Ordering;
 use std::thread::JoinHandle;
 
 use std::fs::File;
-use std::{thread, u128};
 
 use clap::Parser;
 
@@ -67,8 +66,8 @@ fn main() {
     let     num_last:  u32;
 
     let     numspace:           u128 = count_posibilites(args.last - args.skip);    
-    let mut worker_threads:     Vec<thread::JoinHandle<()>> = Vec::new();
-    let     generator_thread:   JoinHandle<IPGenerator>;
+    let     worker_threads:     ThreadHandler<()>          = ThreadHandler::<()>::new();
+    let     generator_thread:   ThreadHandler<IPGenerator> = ThreadHandler::<IPGenerator>::new();
     let     display_thread:     JoinHandle<()>;
     let mut status_thread:      std::option::Option<JoinHandle<()>> = std::option::Option::None;
     let     write_thread:       JoinHandle<()>;
@@ -94,20 +93,19 @@ fn main() {
     println!("[ @MAIN_THREAD      ][ Launching DisplayThread ]");
     
     display_thread     = launch_display_thread();
-    generator_thread   = launch_generator_thread(args.skip, args.seed, args.last, args.zip, args.use_zip, args.no_continue, args.generator_strategy);
     write_thread       = launch_write_thread(out_file);
+    launch_generator_thread(generator_thread.clone(), worker_threads.clone(), args.skip, args.seed, args.last, args.zip, args.use_zip, args.no_continue, args.generator_strategy);
     if args.debug_status {
         status_thread  = launch_status_thread();
     };
-    launch_worker_threads(&mut worker_threads, args.use_host_resolver, args.use_trust_dns, args.use_system_dns);
 
-    used_generator = generator_thread.join().unwrap();
+    launch_worker_threads(generator_thread.clone(), worker_threads.clone(), args.use_host_resolver, args.use_trust_dns, args.use_system_dns);
+
+    READY___SET_GO_SIGNAL.store(true, Ordering::Relaxed);
+
+    used_generator = generator_thread.join();
     
-    display(MessageToPrintOrigin::MainThread, "[ waiting for worker threads ]");
-    while let Some(cur_thread) = worker_threads.pop() {
-        if cfg!(debug_assertions) { display(MessageToPrintOrigin::MainThread, &format!("[ waiting for worker thread: {:?} ]", cur_thread.thread().id())); };
-        cur_thread.join().unwrap();
-    };
+    worker_threads.join_all(MessageToPrintOrigin::MainThread);
     
     QUEUE_TO_WRITE.add( MessageToWrite::End );
     
