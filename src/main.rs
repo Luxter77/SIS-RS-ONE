@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 
-use std::fs::OpenOptions;
+use std::str::FromStr;
+use std::{fs::OpenOptions, net::Ipv4Addr};
 use std::sync::atomic::Ordering;
 use std::thread::JoinHandle;
 
@@ -9,7 +10,6 @@ use std::fs::File;
 use clap::Parser;
 
 mod generators;
-mod generator;
 mod r#static;
 mod display;
 mod workers;
@@ -24,7 +24,6 @@ use workers::*;
 
 use crate::generators::IPGenerator;
 
-/// This function will panic if you hit Ctrl + C more than 255 times xd
 fn ctrl_c_handler() {
     println!("{}", match CTL_C_C___STOP_SIGNAL.get() {
         0 => { GENERATOR_STOP_SIGNAL.store(true, Ordering::Relaxed); "[ @CT_C_SIG_HANDLER ][ Keyboard Interrupt recieved, signaling generator thread to stop. ]" },
@@ -65,16 +64,28 @@ fn main() {
     let     out_file:  File;
     let     num_last:  u32;
 
-    let     numspace:           u128 = count_posibilites(args.last - args.skip);    
-    let     worker_threads:     ThreadHandler<()>          = ThreadHandler::<()>::new();
-    let     generator_thread:   ThreadHandler<IPGenerator> = ThreadHandler::<IPGenerator>::new();
-    let     display_thread:     JoinHandle<()>;
+    let     numspace:           u128                                = count_posibilites(args.last - args.skip);    
+    let     worker_threads:     ThreadHandler<()>                   = ThreadHandler::<()>::new();
+    let     generator_thread:   ThreadHandler<IPGenerator>          = ThreadHandler::<IPGenerator>::new();
     let mut status_thread:      std::option::Option<JoinHandle<()>> = std::option::Option::None;
+    let     display_thread:     JoinHandle<()>;
     let     write_thread:       JoinHandle<()>;
     let     used_generator:     IPGenerator;
+    let     zip:                u128;
+
 
     assert!(args.last > args.skip, "Last number must be greater than the number of skipped iterations.");
     
+    let zip: u32 = match Ipv4Addr::from_str(&args.zip) {
+        Ok(zipip) => Into::<u32>::into(zipip),
+        Err(_) => {
+            match args.zip.parse::<u32>() {
+                Ok(nzip) => { nzip },
+                Err(_) => { panic!("Zip number must be either a valid IPv4 adress or a u32.") },
+            }
+        },
+    };
+
     let orig_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move | panic_info | {
         orig_hook(panic_info);
@@ -83,6 +94,9 @@ fn main() {
     
     out_file = get_outfile(&args.outfile);
     
+    if args.use_zip {
+        println!("{}", format!("[ @MAIN_THREAD      ][ We are zipping to {} ]", zip));
+    }
     println!("{}", format!("[ @MAIN_THREAD      ][ The seed is {} ]", args.seed));
     println!("{}", format!("[ @MAIN_THREAD      ][ This run will generate {} valid IPs ]", numspace));
     
@@ -94,7 +108,7 @@ fn main() {
     
     display_thread     = launch_display_thread();
     write_thread       = launch_write_thread(out_file);
-    launch_generator_thread(generator_thread.clone(), worker_threads.clone(), args.skip, args.seed, args.last, args.zip, args.use_zip, args.no_continue, args.generator_strategy);
+    launch_generator_thread(generator_thread.clone(), worker_threads.clone(), args.skip, args.seed, args.last, zip, args.use_zip, args.no_continue, args.generator_strategy);
     if args.debug_status {
         status_thread  = launch_status_thread();
     };
@@ -128,6 +142,7 @@ fn main() {
 
     if let Some(status_thread) = status_thread {
         println!("[ @MAIN_THREAD      ][ Waiting for status thread. ]");
+        DISPLAY___STOP_SIGNAL.store(true, Ordering::Relaxed);
         status_thread.join().unwrap();
     };    
     

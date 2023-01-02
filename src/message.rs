@@ -12,8 +12,10 @@ pub enum MessageToWrite {
     End,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug, PartialEq)]
 pub enum MessageToPrintOrigin {
+    CustomThread(String),
     GeneratorThread,
     QueryerThread,
     WriterThread,

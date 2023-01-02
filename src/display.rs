@@ -13,11 +13,12 @@ use crate::r#static::*;
 pub fn display(source: MessageToPrintOrigin, msg: &str) {
     if cfg!(debug_assertions) {
         println!("{}", match source {
-            MessageToPrintOrigin::GeneratorThread => format!("[ @GENERATOR_THREAD ]{}", msg),
-            MessageToPrintOrigin::QueryerThread   => format!("[ @QUERYER_THREAD   ]{}", msg),
-            MessageToPrintOrigin::WriterThread    => format!("[ @WRITER_THREAD    ]{}", msg),
-            MessageToPrintOrigin::DisplayThread   => format!("[ @DISPLAY_THREAD   ]{}", msg),
-            MessageToPrintOrigin::MainThread      => format!("[ @MAIN_THREAD      ]{}", msg),
+            MessageToPrintOrigin::CustomThread(src) => format!("[ @{src: >17} ]{msg}"),
+            MessageToPrintOrigin::GeneratorThread   => format!("[ @GENERATOR_THREAD ]{}", msg),
+            MessageToPrintOrigin::QueryerThread     => format!("[ @QUERYER_THREAD   ]{}", msg),
+            MessageToPrintOrigin::WriterThread      => format!("[ @WRITER_THREAD    ]{}", msg),
+            MessageToPrintOrigin::DisplayThread     => format!("[ @DISPLAY_THREAD   ]{}", msg),
+            MessageToPrintOrigin::MainThread        => format!("[ @MAIN_THREAD      ]{}", msg),
         });
         
         io::stdout().flush().expect("Unable to flush stdout!");
@@ -109,11 +110,12 @@ pub(crate) fn launch_display_thread() -> JoinHandle<()> {
                 match message {
                     MessageToPrint::ToDisplay(d_origin, message) => {
                         println!("{}", match d_origin {
-                            MessageToPrintOrigin::GeneratorThread => format!("[ @GENERATOR_THREAD ]{}", message),
-                            MessageToPrintOrigin::QueryerThread   => format!("[ @QUERYER_THREAD   ]{}", message),
-                            MessageToPrintOrigin::WriterThread    => format!("[ @WRITER_THREAD    ]{}", message),
-                            MessageToPrintOrigin::DisplayThread   => format!("[ @DISPLAY_THREAD   ]{}", message),
-                            MessageToPrintOrigin::MainThread      => format!("[ @MAIN_THREAD      ]{}", message),
+                            MessageToPrintOrigin::CustomThread(src) => format!("[ @{src: >17} ]{message}"),
+                            MessageToPrintOrigin::GeneratorThread   => format!("[ @GENERATOR_THREAD ]{message}"),
+                            MessageToPrintOrigin::QueryerThread     => format!("[ @QUERYER_THREAD   ]{message}"),
+                            MessageToPrintOrigin::WriterThread      => format!("[ @WRITER_THREAD    ]{message}"),
+                            MessageToPrintOrigin::DisplayThread     => format!("[ @DISPLAY_THREAD   ]{message}"),
+                            MessageToPrintOrigin::MainThread        => format!("[ @MAIN_THREAD      ]{message}"),
                         });
                     },
                     MessageToPrint::Wait(time) => { sleep(time) },

@@ -13,24 +13,32 @@ use std::{
     sync::atomic::Ordering,
 };
 
-use crate::{message::*, generators::IPGenerator};
-use crate::r#static::*;
-use crate::display::display;
+use crate::{
+    generators::{IPGenerator, GeneratorDirection},
+    display::display,
+    r#static::*,
+    message::*,
+};
 
 pub enum ReservedResoult {
     Valid,
-    Skip(u32),
+    Invalid,
     Overflow,
+    Skip(u32),
 }
 
-pub fn check_reserved(num: u32) -> ReservedResoult {
+pub fn check_reserved(num: u32, dir: GeneratorDirection) -> ReservedResoult {
     if num > (MAX_IIP) {
         return ReservedResoult::Overflow;
     };
 
     for (start, end) in NO_GO_RANGES {
         if ((start) <= num) && (num <= (end)) {
-            return ReservedResoult::Skip(end.saturating_sub(num).saturating_add(1));
+            return match dir {
+                GeneratorDirection::Forward =>  ReservedResoult::Skip(end - num),
+                GeneratorDirection::Backward => ReservedResoult::Skip(num - start),
+                GeneratorDirection::Random =>   ReservedResoult::Invalid,
+            };
         };
     };
 
@@ -100,10 +108,9 @@ pub(crate) fn resolv_worker(t_use_host_resolver: bool, t_use_trust_dns: bool, t_
         if pending {
             p = c as f32 * 100.0f32 / max_pos as f32;
             
-            // if check_reserved(iip.clone()) {
             let mut lipn:   Vec<String> = Vec::new();
             
-            let     ip:     Ipv4Addr    = Ipv4Addr::from(iip.to_string().parse::<u32>().unwrap());
+            let     ip:     Ipv4Addr    = Ipv4Addr::from(iip);
             
             if t_use_system_dns {
                 lipn.push(lookup_addr(&ip.into()).unwrap());
@@ -123,12 +130,9 @@ pub(crate) fn resolv_worker(t_use_host_resolver: bool, t_use_trust_dns: bool, t_
                     display(MessageToPrintOrigin::QueryerThread, &format!("[ {p:0>17}% ][ {c:>10} / {max_pos} ][ IP: {x:<3}.{y:<3}.{z:<3}.{w:<3} ][ DNS: {ipn} ]"));
                     QUEUE_TO_WRITE.add(MessageToWrite::ToWrite(ip.to_string(), ipn) );
                 } else if cfg!(debug_assertions) {
-                    display(MessageToPrintOrigin::QueryerThread, &format!("[ {p:0>17}% ][ {c:>10} / {max_pos} ][IP: {x:<3}.{y:<3}.{z:<3}.{w:<3} ][ IPN: {ipn} ]"));
+                    display(MessageToPrintOrigin::QueryerThread, &format!("[ {p:0>17}% ][ {c:>10} / {max_pos} ][ IP: {x:<3}.{y:<3}.{z:<3}.{w:<3} ][ IPN: {ipn} ]"));
                 };
             };
-            // } else {
-            //     if cfg!(debug_assertions) { display(MessageToPrintOrigin::QueryerThread, &format!("[ {p:0>17}% ][ {c:>10} / {max_pos} ][ IP: {rejected:>15} ][ MSG: REJECTED! ]", rejected=iip.clone().to_string().pad_to_width_with_alignment(15, Alignment::Right))); };
-            // };
 
             if found {
                 FOUND_DISTINCT_COUNT.add_one();

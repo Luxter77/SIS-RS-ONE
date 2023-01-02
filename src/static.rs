@@ -17,7 +17,7 @@ pub(crate) const C_PRIMA:        u128  = 2147483655u128;
 pub(crate) const M_PRIMA:        u128  = LAST_NUMBR;
 
 pub(crate) const CORES:          usize = 6;
-pub(crate) const QUEUE_LIMIT:    usize = CORES * 5;
+pub(crate) const QUEUE_LIMIT:    usize = CORES * 50;
 pub(crate) const OUT_FILE_NAME:  &str  = "RESOLVED.csv";
 pub(crate) const SLEEP_TIME:     u64   = 10;
 
@@ -87,10 +87,8 @@ impl ThreadHandler<()> {
         display(origin.clone(), "[ waiting for worker threads ]");
         let mut unlocked =  self.handles.lock().unwrap();
         while let Some(tread) = unlocked.pop() {
-            if cfg!(debug_assertions) {
-                display(origin.clone(), &format!("[ waiting for worker thread: {:?} ]", tread.thread().id()));
-                tread.join().unwrap();
-            };
+            if cfg!(debug_assertions) { display(origin.clone(), &format!("[ waiting for worker thread: {:?} ]", tread.thread().id())); };
+            tread.join().unwrap();
         };
     }
 }
@@ -190,12 +188,12 @@ pub(crate) struct CommandLineArguments {
     #[arg(long, default_value_t = 0u128)]                                                   pub seed:               u128,
     #[arg(short, long, default_value_t = 0u128)]                                            pub skip:               u128,
     #[arg(short, long, default_value_t = LAST_NUMBR)]                                       pub last:               u128,
-    #[arg(short, long, default_value_t = 0u32)]                                             pub zip:                u32,
+    #[arg(short, long, default_value_t = String::from("0"))]                                pub zip:                String,
     #[arg(long, default_value_t = false)]                                                   pub use_zip:            bool,
     #[arg(short, long, default_value_t = String::from(OUT_FILE_NAME))]                      pub outfile:            String,
     #[arg(long, default_value_t = false)]                                                   pub no_continue:        bool,
-    // #[arg(long, default_value_t = 1u8, value_parser = clap::value_parser!(u8).range(1..))]          pub shards:             u8,
-    // #[arg(long, default_value_t = 1u8, value_parser = clap::value_parser!(u8).range(1..))]          pub shard:              u8,
+    // #[arg(long, default_value_t = 1u8, value_parser = clap::value_parser!(u8).range(1..))]  pub shards:             u8,
+    // #[arg(long, default_value_t = 1u8, value_parser = clap::value_parser!(u8).range(1..))]  pub shard:              u8,
     #[arg(short, long, default_value_t = NumberGenerators::PoorMansGen, value_enum)]        pub generator_strategy: NumberGenerators,
     #[arg(long, default_value_t = true)]                                                    pub use_host_resolver:  bool,
     #[arg(long, default_value_t = true)]                                                    pub use_trust_dns:      bool,
@@ -209,6 +207,7 @@ impl CommandLineArguments {
         return self
     }
 }
+
 
 /// from <https://github.com/robertdavidgraham/masscan/blob/master/data/exclude.conf>
 /// and others, we really dont want these to be angry at us...

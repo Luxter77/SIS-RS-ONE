@@ -2,8 +2,8 @@ use std::io::Write;
 
 use crate::{
     generators::{NumberGenerators, IPGenerator},
+    generators::generator::generate,
     resolv::resolv_worker,
-    generator::generate,
     display::display,
     r#static::*,
     message::*,
