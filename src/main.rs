@@ -115,6 +115,7 @@ fn main() {
 
     launch_worker_threads(generator_thread.clone(), worker_threads.clone(), args.use_host_resolver, args.use_trust_dns, args.use_system_dns);
 
+    println!("[ @MAIN_THREAD      ][ SYSTEMS GO SIGNAL SET! ]");
     READY___SET_GO_SIGNAL.store(true, Ordering::Relaxed);
 
     used_generator = generator_thread.join();
