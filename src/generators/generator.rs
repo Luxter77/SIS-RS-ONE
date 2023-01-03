@@ -40,8 +40,9 @@ pub(crate) fn generate(skip: u128, seed: u128, last: u128, zip: u32, use_zip: bo
                 display(MessageToPrintOrigin::GeneratorThread, "[ We reached the stipulated end! ]"); break;
             };
 
-            if cfg!(debug_assertions) && (generator.gen_state().0 % 100 == 0) {
-                display(MessageToPrintOrigin::GeneratorThread, &format!("[ to_check queue size is currently: {} items long; c <==> {} ]", QUEUE_TO_CHECK.size(), generator.gen_state().0));
+            if generator.gen_state().0 % 15000 == 0 {
+                generator.write_to_save_file().unwrap();
+                if cfg!(debug_assertions) { display(MessageToPrintOrigin::GeneratorThread, &format!("[ to_check queue size is currently: {} items long; c <==> {} ]", QUEUE_TO_CHECK.size(), generator.gen_state().0)); };
             };
         } else {
             worker_handles.unpark();
