@@ -84,12 +84,12 @@ fn display_status() {
 }
 
 pub(crate) fn launch_status_thread() -> Option<JoinHandle<()>> {
-    println!("{}", "[ @MAIN_THREAD      ][ Launching StatusThread ]");   
+    println!("[ @MAIN_THREAD      ][ Launching StatusThread ]");   
     return std::option::Option::Some(thread::Builder::new().name("StatusThread".into()).spawn(move || { display_status(); }).unwrap());
 }
 
 pub(crate) fn launch_display_thread() -> JoinHandle<()> {    
-    println!("{}", "[ @MAIN_THREAD      ][ Launching DisplayThread ]");
+    println!("[ @MAIN_THREAD      ][ Launching DisplayThread ]");
     return thread::Builder::new().name("DisplayThread".into()).spawn(move || { 
         let mut pending: bool = false;
         

@@ -25,7 +25,7 @@ impl SequentialGenerator {
 
         return Self {
             dir: direction,
-            las: las,
+            las,
             xn:  init,
             yn:  init,
             zn:  init,

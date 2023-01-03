@@ -23,19 +23,19 @@ impl Default for PoorMansIPGenerator {
     fn default() -> Self {
         let mut rng: ChaCha12Rng = ChaCha12Rng::from_rng(rand::thread_rng()).unwrap();
         
-        let mut xs = Vec::new(); xs.extend(0..=255); xs.shuffle(&mut rng);
-        let mut ys = Vec::new(); ys.extend(0..=255); ys.shuffle(&mut rng);
-        let mut zs = Vec::new(); zs.extend(0..=255); zs.shuffle(&mut rng);
-        let mut ws = Vec::new(); ws.extend(0..=255); ws.shuffle(&mut rng);
+        let mut xs: Vec<u8> = Vec::new(); xs.extend(0..=255); xs.shuffle(&mut rng);
+        let mut ys: Vec<u8> = Vec::new(); ys.extend(0..=255); ys.shuffle(&mut rng);
+        let mut zs: Vec<u8> = Vec::new(); zs.extend(0..=255); zs.shuffle(&mut rng);
+        let mut ws: Vec<u8> = Vec::new(); ws.extend(0..=255); ws.shuffle(&mut rng);
         
         let new: Self = Self {
-            xs: xs, nx: 0,
-            ys: ys, ny: 0,
-            zs: zs, nz: 0,
-            ws: ws, nw: 0,
-            rng: rng,
-            las: 0  ,
-            cn:  0  ,
+            xs, nx: 0,
+            ys, ny: 0,
+            zs, nz: 0,
+            ws, nw: 0,
+            rng,
+            las: 0,
+            cn:  0,
         };
 
         return new;

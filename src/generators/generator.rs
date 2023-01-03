@@ -2,9 +2,10 @@ use crate::{r#static::*, display::display, message::{MessageToCheck, MessageToPr
 
 use std::{sync::atomic::Ordering, time::Duration, thread::park_timeout};
 
-pub(crate) fn generate(skip: u128, seed: u128, last: u128, zip: u32, use_zip: bool, no_continue: bool, strategy: NumberGenerators, mut worker_handles: ThreadHandler<()>) -> IPGenerator {
-    let mut generator: IPGenerator = IPGenerator::new(seed, strategy, no_continue);
-    let mut skip:      u128        = skip;
+pub(crate) fn generate(mut worker_handles: ThreadHandler<()>, args: CommandLineArguments, zip: u32) -> IPGenerator {
+    // let skip: u128, seed: u128, last: u128, zip: u32, use_zip: bool, no_continue: bool, strategy: NumberGenerators
+    let mut generator: IPGenerator = IPGenerator::new(args.seed, args.generator_strategy, args.no_continue);
+    let mut skip:      u128        = args.skip;
 
     if skip > u32::MAX.into() {
         generator.gen_skip(u32::MAX);
@@ -13,7 +14,7 @@ pub(crate) fn generate(skip: u128, seed: u128, last: u128, zip: u32, use_zip: bo
     
     if skip != 0 { generator.gen_skip(skip.try_into().unwrap()) };
     
-    if use_zip   { generator.gen_zip(zip).unwrap(); };
+    if args.use_zip { generator.gen_zip(zip).unwrap(); };
 
     while !READY___SET_GO_SIGNAL.load(Ordering::Relaxed) { park_timeout(Duration::from_secs(2)); };
 
@@ -36,7 +37,7 @@ pub(crate) fn generate(skip: u128, seed: u128, last: u128, zip: u32, use_zip: bo
                 display(MessageToPrintOrigin::GeneratorThread, "[ We went all the way arround!!!1!!11!1one!!1!111 ]"); break;
             };
 
-            if generator.can_last() && (last == generator.get_las()) {
+            if generator.can_last() && (args.last == generator.get_las()) {
                 display(MessageToPrintOrigin::GeneratorThread, "[ We reached the stipulated end! ]"); break;
             };
 

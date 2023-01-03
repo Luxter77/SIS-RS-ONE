@@ -6,7 +6,6 @@ use dns_lookup::lookup_addr;
 
 use trust_dns_resolver::{ Resolver, config::{NameServerConfig, Protocol, ResolverConfig, ResolverOpts} };
 
-use human_sort;
 use std::net::SocketAddr;
 use std::{
     net::{IpAddr, Ipv4Addr},
@@ -60,13 +59,11 @@ fn trust_dns_lookup_addr(lipn: &mut Vec<String>, ip: &Ipv4Addr, resolver: &Resol
             display(MessageToPrintOrigin::QueryerThread, &format!("[ IP HAS MORE THAN ONE ADRESS! -> {:?} ]", ips));
         };
         
-        if t_use_host_resolver {
-            if lipn.len() > 0 {
-                let mut h_res_conf = ResolverConfig::new();          
-                h_res_conf.add_name_server(NameServerConfig::new(SocketAddr::new(IpAddr::V4(ip.clone()), 53), Protocol::default()));
-                if let Ok(h_res) = Resolver::new(h_res_conf, ResolverOpts::default()).unwrap().reverse_lookup(IpAddr::V4(ip.to_owned())) {
-                    lipn.extend(h_res.iter().map( |nam| -> String { nam.to_ascii() } ).collect::<std::collections::HashSet<_>>());
-                };
+        if t_use_host_resolver && lipn.len() > 0 {
+            let mut h_res_conf: ResolverConfig = ResolverConfig::new();          
+            h_res_conf.add_name_server(NameServerConfig::new(SocketAddr::new(IpAddr::V4(ip.clone()), 53), Protocol::default()));
+            if let Ok(h_res) = Resolver::new(h_res_conf, ResolverOpts::default()).unwrap().reverse_lookup(IpAddr::V4(ip.to_owned())) {
+                lipn.extend(h_res.iter().map( |nam| -> String { nam.to_ascii() } ).collect::<std::collections::HashSet<_>>());
             };
         };
         
@@ -94,7 +91,7 @@ pub(crate) fn resolv_worker(t_use_host_resolver: bool, t_use_trust_dns: bool, t_
         resolver = Some(trust_dns_resolver::Resolver::default().unwrap());
     }
 
-    while !READY___SET_GO_SIGNAL.load(Ordering::Relaxed) {};
+    while !READY___SET_GO_SIGNAL.load(Ordering::Relaxed) { std::thread::park_timeout(std::time::Duration::from_millis(2)); };
 
     while !QUERYER___STOP_SIGNAL.load(Ordering::Relaxed) {        
         if let Ok( MessageToCheck::End ) = QUEUE_TO_CHECK.peek() { break };
@@ -114,10 +111,8 @@ pub(crate) fn resolv_worker(t_use_host_resolver: bool, t_use_trust_dns: bool, t_
             
             if t_use_system_dns {
                 lipn.push(lookup_addr(&ip.into()).unwrap());
-            } else {
-                if let Some(ref resolver) = resolver {
-                    trust_dns_lookup_addr(&mut lipn, &ip, resolver, t_use_host_resolver);
-                };
+            } else if let Some(ref resolver) = resolver {
+                trust_dns_lookup_addr(&mut lipn, &ip, resolver, t_use_host_resolver);
             };
             
             lipn.sort_by(| a, b | human_sort::compare(a.as_str(), b.as_str()));

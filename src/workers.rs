@@ -1,8 +1,8 @@
 use std::io::Write;
 
 use crate::{
-    generators::{NumberGenerators, IPGenerator},
     generators::generator::generate,
+    generators::IPGenerator,
     resolv::resolv_worker,
     display::display,
     r#static::*,
@@ -26,9 +26,9 @@ pub(crate) fn write_worker(mut out_file: std::fs::File) {
     display(MessageToPrintOrigin::WriterThread, "[ Write End ]");
 }
 
-pub(crate) fn launch_generator_thread(mut generator_handle: ThreadHandler<IPGenerator>, worker_handles: ThreadHandler<()>, skip: u128, seed: u128, last: u128, zip: u32, use_zip: bool, no_continue: bool, strategy: NumberGenerators) {
+pub(crate) fn launch_generator_thread(mut generator_handle: ThreadHandler<IPGenerator>, worker_handles: ThreadHandler<()>, args: CommandLineArguments, zip: u32) {
     display(MessageToPrintOrigin::MainThread, "[ Launching GeneratorThread ]");
-    generator_handle.add(std::thread::Builder::new().name("GeneratorThread".into()).spawn(move || { return generate(skip, seed, last, zip, use_zip, no_continue, strategy, worker_handles); }).unwrap());
+    generator_handle.add(std::thread::Builder::new().name("GeneratorThread".into()).spawn(move || { return generate(worker_handles, args, zip); }).unwrap());
 }
 
 pub(crate) fn launch_write_thread(out_file: std::fs::File) -> std::thread::JoinHandle<()> {

@@ -182,7 +182,7 @@ impl Counter<u64> for AtomicU64 {
     fn get(&self) -> u64 { self.load(Ordering::Relaxed) }
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 pub(crate) struct CommandLineArguments {
     #[arg(long, default_value_t = 0u128)]                                                   pub seed:               u128,

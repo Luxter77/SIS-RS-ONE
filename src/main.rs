@@ -1,4 +1,6 @@
 #![allow(non_snake_case)]
+#![allow(clippy::needless_return)] // I like my return statements
+#![allow(clippy::zero_prefixed_literal)] // I'tis a STILISTIC choise and I took that personal
 
 use std::str::FromStr;
 use std::{fs::OpenOptions, net::Ipv4Addr};
@@ -108,7 +110,7 @@ fn main() {
     
     display_thread     = launch_display_thread();
     write_thread       = launch_write_thread(out_file);
-    launch_generator_thread(generator_thread.clone(), worker_threads.clone(), args.skip, args.seed, args.last, zip, args.use_zip, args.no_continue, args.generator_strategy);
+    launch_generator_thread(generator_thread.clone(), worker_threads.clone(), args.clone(), zip);
     if args.debug_status {
         status_thread  = launch_status_thread();
     };

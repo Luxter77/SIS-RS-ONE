@@ -17,9 +17,9 @@ impl LCGIPGenerator {
     pub fn new(seed: u128, m: u128, c: u128, a: u128) -> Self {
         let mut new: Self = Self {
             x: seed,
-            m: m,
-            c: c,
-            a: a,
+            m,
+            c,
+            a,
             l: 0,
             f: 0,
             cn: 0,
@@ -39,11 +39,9 @@ impl NumberGenerator for LCGIPGenerator {
             if let Ok(x) = self.x.try_into() {
                 self.l += 1; return GeneratorMessage::Looped(self.c, x);
             } else { return self.next(); }
-        } else {
-            if let Ok(x) = self.x.try_into() {
-                return GeneratorMessage::Normal(self.c, x);
-            } else { return self.next(); }
-        }
+        } else if let Ok(x) = self.x.try_into() {
+            return GeneratorMessage::Normal(self.c, x);
+        } else { return self.next(); };
     }
 }
 
