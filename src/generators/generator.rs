@@ -11,11 +11,11 @@ pub(crate) fn generate(skip: u128, seed: u128, last: u128, zip: u32, use_zip: bo
         skip -= u32::MAX as u128;
     };
     
-    while skip != 0 { generator.gen_skip(skip.try_into().unwrap()) };
+    if skip != 0 { generator.gen_skip(skip.try_into().unwrap()) };
     
     if use_zip   { generator.gen_zip(zip).unwrap(); };
 
-    while !READY___SET_GO_SIGNAL.load(Ordering::Relaxed) {};
+    while !READY___SET_GO_SIGNAL.load(Ordering::Relaxed) { park_timeout(Duration::from_secs(2)); };
 
     while !GENERATOR_STOP_SIGNAL.load(Ordering::Relaxed) { // Generates IIPs for the query worker threads
         if QUEUE_TO_CHECK.size() < QUEUE_LIMIT {
