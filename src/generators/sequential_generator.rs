@@ -37,10 +37,10 @@ impl SequentialGenerator {
         self.las = ((self.xn as u32) << 00) + ((self.yn as u32) << 08) + ((self.zn as u32) << 16) + ((self.wn as u32) << 24);
     }
     fn reg_from_las(&mut self) {
-        self.xn = (self.las >> (24 - (8 * 0)) & 0xFF) as u8;
-        self.yn = (self.las >> (24 - (8 * 1)) & 0xFF) as u8;
-        self.zn = (self.las >> (24 - (8 * 2)) & 0xFF) as u8;
-        self.wn = (self.las >> (24 - (8 * 3)) & 0xFF) as u8;
+        self.xn = ((self.las >> 24) & 0xFF) as u8;
+        self.yn = ((self.las >> 16) & 0xFF) as u8;
+        self.zn = ((self.las >> 08) & 0xFF) as u8;
+        self.wn = ((self.las >> 00) & 0xFF) as u8;
     }
 }
 

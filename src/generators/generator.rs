@@ -25,25 +25,24 @@ pub(crate) fn generate(mut worker_handles: ThreadHandler<()>, args: CommandLineA
                     crate::resolv::ReservedResoult::Valid        => { QUEUE_TO_CHECK.add(MessageToCheck::ToCheck(co, nu)); },
                     crate::resolv::ReservedResoult::Skip(n) => { 
                         match generator {
-                            IPGenerator::SequentialGenerator(_) => { generator.gen_skip(n.saturating_sub(1)) },
-                            IPGenerator::PoorMansIPGenerator(_) => {/* noop */},
-                            IPGenerator::LCGIPGenerator(_)      => {/* noop */},
+                            IPGenerator::Sequential(_) => { generator.gen_skip(n.saturating_sub(1)) },
+                            IPGenerator::PoorMans(_) => {/* noop */},
+                            IPGenerator::LCGIP(_)      => {/* noop */},
                         };
                     },
-                    crate::resolv::ReservedResoult::Overflow => {/* noop */},
                     crate::resolv::ReservedResoult::Invalid  => {/* noop */},
                 };
             } else {
-                display(MessageToPrintOrigin::GeneratorThread, "[ We went all the way arround!!!1!!11!1one!!1!111 ]"); break;
+                display(MessageToPrintOrigin::Generator, "[ We went all the way arround!!!1!!11!1one!!1!111 ]"); break;
             };
 
             if generator.can_last() && (args.last == generator.get_las()) {
-                display(MessageToPrintOrigin::GeneratorThread, "[ We reached the stipulated end! ]"); break;
+                display(MessageToPrintOrigin::Generator, "[ We reached the stipulated end! ]"); break;
             };
 
             if generator.gen_state().0 % 15000 == 0 {
                 generator.write_to_save_file().unwrap();
-                if cfg!(debug_assertions) { display(MessageToPrintOrigin::GeneratorThread, &format!("[ to_check queue size is currently: {} items long; c <==> {} ]", QUEUE_TO_CHECK.size(), generator.gen_state().0)); };
+                if cfg!(debug_assertions) { display(MessageToPrintOrigin::Generator, &format!("[ to_check queue size is currently: {} items long; c <==> {} ]", QUEUE_TO_CHECK.size(), generator.gen_state().0)); };
             };
         } else {
             worker_handles.unpark();
@@ -52,16 +51,16 @@ pub(crate) fn generate(mut worker_handles: ThreadHandler<()>, args: CommandLineA
     };
     
     if cfg!(debug_assertions) {
-        display(MessageToPrintOrigin::GeneratorThread, &format!("[ Final generator state {} ]", match generator.clone() {
-            IPGenerator::PoorMansIPGenerator(gen) => format!("{:?}", gen),
-            IPGenerator::SequentialGenerator(gen) => format!("{:?}", gen),
-            IPGenerator::LCGIPGenerator(gen)      => format!("{:?}", gen), // SHOULDN'T ever panic, in theory...
+        display(MessageToPrintOrigin::Generator, &format!("[ Final generator state {} ]", match generator.clone() {
+            IPGenerator::PoorMans(gen) => format!("{:?}", gen),
+            IPGenerator::Sequential(gen) => format!("{:?}", gen),
+            IPGenerator::LCGIP(gen)      => format!("{:?}", gen), // SHOULDN'T ever panic, in theory...
         }));
     };
 
     QUEUE_TO_CHECK.add( MessageToCheck::End );
 
-    display(MessageToPrintOrigin::GeneratorThread,  &match generator.write_to_save_file() {
+    display(MessageToPrintOrigin::Generator,  &match generator.write_to_save_file() {
         Err(why) => { format!("[ Coult not write to checkpoint file! {why} ][ GeneratorState: {} ]", serde_json::to_string(&generator).unwrap()) },
         Ok(_)           => { format!("[ Wrote generator state to checkpoint file {CHECKPOINT_FILE} ]") },
     });

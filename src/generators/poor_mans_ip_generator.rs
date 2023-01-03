@@ -53,7 +53,7 @@ impl NumberGenerator for PoorMansIPGenerator {
                 if let Some(z) = self.zs.get(self.nz) {
                     if let Some(w) = self.ws.get(self.nw) {
                         self.nw += 1;
-                        (w_, z_, y_, x_) = (x.clone().into(), y.clone().into(), z.clone().into(), w.clone().into());
+                        (w_, z_, y_, x_) = ((*x).into(), (*y).into(), (*z).into(), (*w).into());
                         self.las = (((x_ * 255 + y_) * 255 + z_) * 255 + w_) as u32;
                         return GeneratorMessage::Normal(self.cn.into(), self.las);
                     } else {

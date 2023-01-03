@@ -22,15 +22,10 @@ use crate::{
 pub enum ReservedResoult {
     Valid,
     Invalid,
-    Overflow,
     Skip(u32),
 }
 
 pub fn check_reserved(num: u32, dir: GeneratorDirection) -> ReservedResoult {
-    if num > (MAX_IIP) {
-        return ReservedResoult::Overflow;
-    };
-
     for (start, end) in NO_GO_RANGES {
         if ((start) <= num) && (num <= (end)) {
             return match dir {
@@ -56,12 +51,12 @@ fn trust_dns_lookup_addr(lipn: &mut Vec<String>, ip: &Ipv4Addr, resolver: &Resol
         let ips: Vec<String> = res.iter().map( |nam| -> String { nam.to_ascii() } ).collect();
         
         if ips.len() > 1 && cfg!(debug_assertions) {
-            display(MessageToPrintOrigin::QueryerThread, &format!("[ IP HAS MORE THAN ONE ADRESS! -> {:?} ]", ips));
+            display(MessageToPrintOrigin::Queryer, &format!("[ IP HAS MORE THAN ONE ADRESS! -> {:?} ]", ips));
         };
         
-        if t_use_host_resolver && lipn.len() > 0 {
+        if t_use_host_resolver && !lipn.is_empty() {
             let mut h_res_conf: ResolverConfig = ResolverConfig::new();          
-            h_res_conf.add_name_server(NameServerConfig::new(SocketAddr::new(IpAddr::V4(ip.clone()), 53), Protocol::default()));
+            h_res_conf.add_name_server(NameServerConfig::new(SocketAddr::new(IpAddr::V4(*ip), 53), Protocol::default()));
             if let Ok(h_res) = Resolver::new(h_res_conf, ResolverOpts::default()).unwrap().reverse_lookup(IpAddr::V4(ip.to_owned())) {
                 lipn.extend(h_res.iter().map( |nam| -> String { nam.to_ascii() } ).collect::<std::collections::HashSet<_>>());
             };
@@ -97,7 +92,7 @@ pub(crate) fn resolv_worker(t_use_host_resolver: bool, t_use_trust_dns: bool, t_
         if let Ok( MessageToCheck::End ) = QUEUE_TO_CHECK.peek() { break };
         
         if let Ok( MessageToCheck::ToCheck(p_c, p_iip) ) = QUEUE_TO_CHECK.get() {
-            (c, iip, pending) = (p_c.clone(), p_iip.clone(), true);
+            (c, iip, pending) = (p_c, p_iip, true);
         } else {
             generator_handle.unpark();
         };
@@ -122,10 +117,10 @@ pub(crate) fn resolv_worker(t_use_host_resolver: bool, t_use_trust_dns: bool, t_
                 let [x, y, z, w] = ip.clone().octets();
                 if ipn != ip.to_string() {
                     FOUND_COUNT.add_one();
-                    display(MessageToPrintOrigin::QueryerThread, &format!("[ {p:0>17}% ][ {c:>10} / {max_pos} ][ IP: {x:<3}.{y:<3}.{z:<3}.{w:<3} ][ DNS: {ipn} ]"));
+                    display(MessageToPrintOrigin::Queryer, &format!("[ {p:0>17}% ][ {c:>10} / {max_pos} ][ IP: {x:<3}.{y:<3}.{z:<3}.{w:<3} ][ DNS: {ipn} ]"));
                     QUEUE_TO_WRITE.add(MessageToWrite::ToWrite(ip.to_string(), ipn) );
                 } else if cfg!(debug_assertions) {
-                    display(MessageToPrintOrigin::QueryerThread, &format!("[ {p:0>17}% ][ {c:>10} / {max_pos} ][ IP: {x:<3}.{y:<3}.{z:<3}.{w:<3} ][ IPN: {ipn} ]"));
+                    display(MessageToPrintOrigin::Queryer, &format!("[ {p:0>17}% ][ {c:>10} / {max_pos} ][ IP: {x:<3}.{y:<3}.{z:<3}.{w:<3} ][ IPN: {ipn} ]"));
                 };
             };
 
