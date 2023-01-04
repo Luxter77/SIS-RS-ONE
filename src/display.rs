@@ -13,12 +13,12 @@ use crate::r#static::*;
 pub fn display(source: MessageToPrintOrigin, msg: &str) {
     if cfg!(debug_assertions) {
         println!("{}", match source {
-            MessageToPrintOrigin::CustomThread(src) => format!("[ @{src: >17} ]{msg}"),
-            MessageToPrintOrigin::GeneratorThread   => format!("[ @GENERATOR_THREAD ]{}", msg),
-            MessageToPrintOrigin::QueryerThread     => format!("[ @QUERYER_THREAD   ]{}", msg),
-            MessageToPrintOrigin::WriterThread      => format!("[ @WRITER_THREAD    ]{}", msg),
-            MessageToPrintOrigin::DisplayThread     => format!("[ @DISPLAY_THREAD   ]{}", msg),
-            MessageToPrintOrigin::MainThread        => format!("[ @MAIN_THREAD      ]{}", msg),
+            MessageToPrintOrigin::Custom(src) => format!("[ @{src: >17} ]{msg}"),
+            MessageToPrintOrigin::Generator   => format!("[ @GENERATOR_THREAD ]{msg}"),
+            MessageToPrintOrigin::Queryer     => format!("[ @QUERYER_THREAD   ]{msg}"),
+            MessageToPrintOrigin::Writer      => format!("[ @WRITER_THREAD    ]{msg}"),
+            MessageToPrintOrigin::Display     => format!("[ @DISPLAY_THREAD   ]{msg}"),
+            MessageToPrintOrigin::Main        => format!("[ @MAIN_THREAD      ]{msg}"),
         });
         
         io::stdout().flush().expect("Unable to flush stdout!");
@@ -50,7 +50,7 @@ fn display_status() {
         match QUEUE_TO_WRITE.peek() { Ok(message) => { message }, Err(_) => { MessageToWrite::EmptyQueue } },
     );
 
-    QUEUE_TO_PRINT.add(MessageToPrint::ToDisplay(MessageToPrintOrigin::DisplayThread,
+    QUEUE_TO_PRINT.add(MessageToPrint::ToDisplay(MessageToPrintOrigin::Display,
         format!("[ Signal status: {:?}; queue sizes: {:?}; last times: {:?} ]", prev_stop_signal_status, prev_queue_sizes, prev_last_items)
     ));
 
@@ -70,7 +70,7 @@ fn display_status() {
         
         if (stop_signal_status != prev_stop_signal_status) || (queue_sizes != prev_queue_sizes) || (last_items != prev_last_items) {
             QUEUE_TO_PRINT.add(MessageToPrint::ToDisplay(
-                MessageToPrintOrigin::DisplayThread,
+                MessageToPrintOrigin::Display,
                 format!("[ Signal status: {:?}; queue sizes: {:?}; last times: {:?} ]", stop_signal_status, queue_sizes, last_items)
             ));
         }
@@ -84,12 +84,12 @@ fn display_status() {
 }
 
 pub(crate) fn launch_status_thread() -> Option<JoinHandle<()>> {
-    println!("{}", "[ @MAIN_THREAD      ][ Launching StatusThread ]");   
+    println!("[ @MAIN_THREAD      ][ Launching StatusThread ]");   
     return std::option::Option::Some(thread::Builder::new().name("StatusThread".into()).spawn(move || { display_status(); }).unwrap());
 }
 
 pub(crate) fn launch_display_thread() -> JoinHandle<()> {    
-    println!("{}", "[ @MAIN_THREAD      ][ Launching DisplayThread ]");
+    println!("[ @MAIN_THREAD      ][ Launching DisplayThread ]");
     return thread::Builder::new().name("DisplayThread".into()).spawn(move || { 
         let mut pending: bool = false;
         
@@ -110,12 +110,12 @@ pub(crate) fn launch_display_thread() -> JoinHandle<()> {
                 match message {
                     MessageToPrint::ToDisplay(d_origin, message) => {
                         println!("{}", match d_origin {
-                            MessageToPrintOrigin::CustomThread(src) => format!("[ @{src: >17} ]{message}"),
-                            MessageToPrintOrigin::GeneratorThread   => format!("[ @GENERATOR_THREAD ]{message}"),
-                            MessageToPrintOrigin::QueryerThread     => format!("[ @QUERYER_THREAD   ]{message}"),
-                            MessageToPrintOrigin::WriterThread      => format!("[ @WRITER_THREAD    ]{message}"),
-                            MessageToPrintOrigin::DisplayThread     => format!("[ @DISPLAY_THREAD   ]{message}"),
-                            MessageToPrintOrigin::MainThread        => format!("[ @MAIN_THREAD      ]{message}"),
+                            MessageToPrintOrigin::Custom(src) => format!("[ @{src: >17} ]{message}"),
+                            MessageToPrintOrigin::Generator   => format!("[ @GENERATOR_THREAD ]{message}"),
+                            MessageToPrintOrigin::Queryer     => format!("[ @QUERYER_THREAD   ]{message}"),
+                            MessageToPrintOrigin::Writer      => format!("[ @WRITER_THREAD    ]{message}"),
+                            MessageToPrintOrigin::Display     => format!("[ @DISPLAY_THREAD   ]{message}"),
+                            MessageToPrintOrigin::Main        => format!("[ @MAIN_THREAD      ]{message}"),
                         });
                     },
                     MessageToPrint::Wait(time) => { sleep(time) },

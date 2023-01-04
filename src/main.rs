@@ -1,4 +1,10 @@
 #![allow(non_snake_case)]
+#![allow(clippy::needless_return)] // I like my return statements
+#![allow(clippy::zero_prefixed_literal)] // I'tis a STILISTIC choise and I took that personal
+#![allow(clippy::identity_op)] // STILISTIC CHOISE
+#![allow(clippy::upper_case_acronyms)] // do i need repeat my self
+#![allow(clippy::format_in_format_args)] // You see, println!'s formatting is not atomic, causing output to get mangled when multitreading 
+#![warn(clippy::needless_late_init)] // * sight *
 
 use std::str::FromStr;
 use std::{fs::OpenOptions, net::Ipv4Addr};
@@ -44,12 +50,12 @@ fn set_cc_handler() {
 #[inline(always)]
 fn get_outfile(fpath: &str) -> File {
     let out_file: File;
-    let out_path: &std::path::Path = std::path::Path::new(fpath);
+    let out_path: std::path::PathBuf = std::path::Path::new(fpath).to_owned();
     if out_path.exists() {
-        out_file = OpenOptions::new().append(true).open(out_path.clone()).expect("Could not open existing file!");
+        out_file = OpenOptions::new().append(true).open(&out_path).expect("Could not open existing file!");
         println!("{}", format!("[ @MAIN_THREAD      ][ Using existing file: {} ]", out_path.display()));
     } else {
-        out_file = OpenOptions::new().create(true).write(true).open(out_path.clone()).expect("Could not create output file!");
+        out_file = OpenOptions::new().create(true).write(true).open(&out_path).expect("Could not create output file!");
         println!("{}", format!("[ @MAIN_THREAD      ][ Created new file: {} ]", out_path.display()));
         QUEUE_TO_WRITE.add(MessageToWrite::ToWrite(String::from("IP"), String::from("HOSTNAME")));
     };
@@ -70,7 +76,7 @@ fn main() {
     let mut status_thread:      std::option::Option<JoinHandle<()>> = std::option::Option::None;
     let     display_thread:     JoinHandle<()>;
     let     write_thread:       JoinHandle<()>;
-    let     used_generator:     IPGenerator;
+    
     let     zip:                u128;
 
 
@@ -108,7 +114,7 @@ fn main() {
     
     display_thread     = launch_display_thread();
     write_thread       = launch_write_thread(out_file);
-    launch_generator_thread(generator_thread.clone(), worker_threads.clone(), args.skip, args.seed, args.last, zip, args.use_zip, args.no_continue, args.generator_strategy);
+    launch_generator_thread(generator_thread.clone(), worker_threads.clone(), args.clone(), zip);
     if args.debug_status {
         status_thread  = launch_status_thread();
     };
@@ -118,26 +124,26 @@ fn main() {
     println!("[ @MAIN_THREAD      ][ SYSTEMS GO SIGNAL SET! ]");
     READY___SET_GO_SIGNAL.store(true, Ordering::Relaxed);
 
-    used_generator = generator_thread.join();
+    let     used_generator:     IPGenerator = generator_thread.join();
     
-    worker_threads.join_all(MessageToPrintOrigin::MainThread);
+    worker_threads.join_all(MessageToPrintOrigin::Main);
     
     QUEUE_TO_WRITE.add( MessageToWrite::End );
     
-    display(MessageToPrintOrigin::MainThread, "[ Waiting for writer thread. ]");
+    display(MessageToPrintOrigin::Main, "[ Waiting for writer thread. ]");
     
     write_thread.join().unwrap();
     
     (c_last, num_last) = used_generator.gen_state();
 
-    display(MessageToPrintOrigin::MainThread, "[ - - - - - - - - - - - - - ]");
-    display(MessageToPrintOrigin::MainThread, &format!("[ We started @ {} Iterations ]",            args.skip));
-    display(MessageToPrintOrigin::MainThread, &format!("[ The last number was => {} ]",             c_last));
-    display(MessageToPrintOrigin::MainThread, &format!("[ We found {} records ({} idstinct IPs out of {} in usable space) ]", FOUND_COUNT.get(), FOUND_DISTINCT_COUNT.get(), numspace));
-    display(MessageToPrintOrigin::MainThread, &format!("[ It appeared after {} iterations. ]",      num_last));
-    display(MessageToPrintOrigin::MainThread, "[ - - - - - - - - - - - - - ]");
+    display(MessageToPrintOrigin::Main, "[ - - - - - - - - - - - - - ]");
+    display(MessageToPrintOrigin::Main, &format!("[ We started @ {} Iterations ]",            args.skip));
+    display(MessageToPrintOrigin::Main, &format!("[ The last number was => {} ]",             c_last));
+    display(MessageToPrintOrigin::Main, &format!("[ We found {} records ({} idstinct IPs out of {} in usable space) ]", FOUND_COUNT.get(), FOUND_DISTINCT_COUNT.get(), numspace));
+    display(MessageToPrintOrigin::Main, &format!("[ It appeared after {} iterations. ]",      num_last));
+    display(MessageToPrintOrigin::Main, "[ - - - - - - - - - - - - - ]");
 
-    display(MessageToPrintOrigin::MainThread, "[ Waiting for display thread. ]");
+    display(MessageToPrintOrigin::Main, "[ Waiting for display thread. ]");
     QUEUE_TO_PRINT.add(MessageToPrint::End);
     display_thread.join().unwrap();
 

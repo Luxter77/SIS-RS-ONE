@@ -9,16 +9,17 @@ mod poor_mans_ip_generator;
 mod sequential_generator;
 mod lcgipgenerator;
 
-use sequential_generator::SequentialGenerator;
-use poor_mans_ip_generator::PoorMansIPGenerator;
-use lcgipgenerator::LCGIPGenerator;
+use sequential_generator::Sequential;
+use poor_mans_ip_generator::PoorMans;
+use lcgipgenerator::LCG;
 
 /// Roll your own random generator they say, what could go wrong, they say...
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::large_enum_variant)] // TODO: SEE IF THIS OPTIMIZATION ACTUALLY MAKES SENSE OR NOT
 pub enum IPGenerator {
-    PoorMansIPGenerator(PoorMansIPGenerator),
-    SequentialGenerator(SequentialGenerator),
-    LCGIPGenerator(LCGIPGenerator),
+    PoorMans(PoorMans),
+    Sequential(Sequential),
+    LCG(LCG),
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -69,56 +70,56 @@ impl IPGenerator {
             };
         } else {
             return match strategy {
-                NumberGenerators::PoorMansGen => IPGenerator::PoorMansIPGenerator(PoorMansIPGenerator::default()),
-                NumberGenerators::Sequential  => { IPGenerator::SequentialGenerator(SequentialGenerator::new(seed.try_into().ok().or(Some(0)), GeneratorDirection::Forward, TryInto::<u32>::try_into(last).ok())) },
+                NumberGenerators::PoorMansGen => IPGenerator::PoorMans(PoorMans::default()),
+                NumberGenerators::Sequential  => { IPGenerator::Sequential(Sequential::new(seed.try_into().ok().or(Some(0)), GeneratorDirection::Forward, TryInto::<u32>::try_into(last).ok())) },
                 NumberGenerators::LCG => {
-                    display(MessageToPrintOrigin::GeneratorThread, &format!("[ WARNING: THE IMPLEMENTATION OF THE FEATURE PRand-LCG IS CURRENTLY BROKEN! ]"));
+                    display(MessageToPrintOrigin::Generator, "[ WARNING: THE IMPLEMENTATION OF THE FEATURE PRand-LCG IS CURRENTLY BROKEN! ]");
                     QUEUE_TO_PRINT.add( crate::message::MessageToPrint::Wait(std::time::Duration::from_secs(3)) );
-                    IPGenerator::LCGIPGenerator(LCGIPGenerator::new(seed, M_PRIMA, C_PRIMA, A_PRIMA))
+                    IPGenerator::LCG(LCG::new(seed, M_PRIMA, C_PRIMA, A_PRIMA))
                 },
             };
         };
     }
     pub fn gen_skip(&mut self, skip: u32) {
         match self {
-            IPGenerator::PoorMansIPGenerator(_) => unimplemented!(),
-            IPGenerator::SequentialGenerator(gen) => gen.skip(skip),
-            IPGenerator::LCGIPGenerator(gen)           => gen.skip(skip),
+            IPGenerator::PoorMans(_) => unimplemented!(),
+            IPGenerator::Sequential(gen) => gen.skip(skip),
+            IPGenerator::LCG(gen)           => gen.skip(skip),
         }
     }
     pub fn gen_zip(&mut self, zip: u32) -> Result<u32, &str> {
         match self {
-            IPGenerator::PoorMansIPGenerator(_) => { return Result::Err("not implemented") },
-            IPGenerator::SequentialGenerator(gen) => { return gen.zip(zip); },
-            IPGenerator::LCGIPGenerator(gen) => { return gen.zip(zip); },
+            IPGenerator::PoorMans(_) => { return Result::Err("not implemented") },
+            IPGenerator::Sequential(gen) => { return gen.zip(zip); },
+            IPGenerator::LCG(gen) => { return gen.zip(zip); },
         }
     }
     pub fn gen_next(&mut self) -> GeneratorMessage {
         match self {
-            IPGenerator::PoorMansIPGenerator(gen) => gen.next(),
-            IPGenerator::SequentialGenerator(gen) => gen.next(),
-            IPGenerator::LCGIPGenerator(gen)           => gen.next(),
+            IPGenerator::PoorMans(gen) => gen.next(),
+            IPGenerator::Sequential(gen) => gen.next(),
+            IPGenerator::LCG(gen)           => gen.next(),
         }
     }
     pub fn gen_state(&self) -> (u128, u32) {
         match self {
-            IPGenerator::PoorMansIPGenerator(gen) => { (gen.cn.into(), gen.las ) },
-            IPGenerator::SequentialGenerator(gen) => { (gen.cn.into(), gen.las ) },
-            IPGenerator::LCGIPGenerator(gen)           => { (gen.cn,        gen.x.try_into().unwrap()) }, // SHOULDN'T ever panic, in theory...
+            IPGenerator::PoorMans(gen) => { (gen.cn.into(), gen.las ) },
+            IPGenerator::Sequential(gen) => { (gen.cn.into(), gen.las ) },
+            IPGenerator::LCG(gen)           => { (gen.cn,        gen.x.try_into().unwrap()) }, // SHOULDN'T ever panic, in theory...
         }
     }
     pub fn gen_dir(&self) -> GeneratorDirection {
         match self {
-            IPGenerator::PoorMansIPGenerator(_)                         => { GeneratorDirection::Random },
-            IPGenerator::LCGIPGenerator(_)                              => { GeneratorDirection::Random },
-            IPGenerator::SequentialGenerator(gen) => { gen.dir },
+            IPGenerator::PoorMans(_)                         => { GeneratorDirection::Random },
+            IPGenerator::LCG(_)                              => { GeneratorDirection::Random },
+            IPGenerator::Sequential(gen) => { gen.dir },
         }
     }
     pub fn las_passed(&self) -> bool {
         match self {
-            IPGenerator::PoorMansIPGenerator(_)                         => { false },
-            IPGenerator::LCGIPGenerator(_)                              => { false },
-            IPGenerator::SequentialGenerator(gen) => { gen.has_passed_limit() },
+            IPGenerator::PoorMans(_)                         => { false },
+            IPGenerator::LCG(_)                              => { false },
+            IPGenerator::Sequential(gen) => { gen.has_passed_limit() },
         }
     }
 }

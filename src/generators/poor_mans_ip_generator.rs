@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use rand::{prelude::SliceRandom};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PoorMansIPGenerator {
+pub struct PoorMans {
     xs: Vec<u8>,
     ys: Vec<u8>,
     zs: Vec<u8>,
@@ -19,30 +19,30 @@ pub struct PoorMansIPGenerator {
     pub las: u32,
 }
 
-impl Default for PoorMansIPGenerator {
+impl Default for PoorMans {
     fn default() -> Self {
         let mut rng: ChaCha12Rng = ChaCha12Rng::from_rng(rand::thread_rng()).unwrap();
         
-        let mut xs = Vec::new(); xs.extend(0..=255); xs.shuffle(&mut rng);
-        let mut ys = Vec::new(); ys.extend(0..=255); ys.shuffle(&mut rng);
-        let mut zs = Vec::new(); zs.extend(0..=255); zs.shuffle(&mut rng);
-        let mut ws = Vec::new(); ws.extend(0..=255); ws.shuffle(&mut rng);
+        let mut xs: Vec<u8> = Vec::new(); xs.extend(0..=255); xs.shuffle(&mut rng);
+        let mut ys: Vec<u8> = Vec::new(); ys.extend(0..=255); ys.shuffle(&mut rng);
+        let mut zs: Vec<u8> = Vec::new(); zs.extend(0..=255); zs.shuffle(&mut rng);
+        let mut ws: Vec<u8> = Vec::new(); ws.extend(0..=255); ws.shuffle(&mut rng);
         
         let new: Self = Self {
-            xs: xs, nx: 0,
-            ys: ys, ny: 0,
-            zs: zs, nz: 0,
-            ws: ws, nw: 0,
-            rng: rng,
-            las: 0  ,
-            cn:  0  ,
+            xs, nx: 0,
+            ys, ny: 0,
+            zs, nz: 0,
+            ws, nw: 0,
+            rng,
+            las: 0,
+            cn:  0,
         };
 
         return new;
     }
 }
 
-impl NumberGenerator for PoorMansIPGenerator {
+impl NumberGenerator for PoorMans {
     #[allow(unused_variables)]
     fn skip(&mut self, skip: u32) { unimplemented!() }
     fn next(&mut self) -> GeneratorMessage {
@@ -53,7 +53,7 @@ impl NumberGenerator for PoorMansIPGenerator {
                 if let Some(z) = self.zs.get(self.nz) {
                     if let Some(w) = self.ws.get(self.nw) {
                         self.nw += 1;
-                        (w_, z_, y_, x_) = (x.clone().into(), y.clone().into(), z.clone().into(), w.clone().into());
+                        (w_, z_, y_, x_) = ((*x).into(), (*y).into(), (*z).into(), (*w).into());
                         self.las = (((x_ * 255 + y_) * 255 + z_) * 255 + w_) as u32;
                         return GeneratorMessage::Normal(self.cn.into(), self.las);
                     } else {

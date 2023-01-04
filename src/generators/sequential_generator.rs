@@ -3,7 +3,7 @@ use super::{NumberGenerator, ZippableNumberGenerator, GeneratorMessage, Generato
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SequentialGenerator {
+pub struct Sequential {
     pub dir: GeneratorDirection,
     pub cn:  u32,
     pub las: u32,
@@ -14,7 +14,7 @@ pub struct SequentialGenerator {
     wn: u8,
 }
 
-impl SequentialGenerator {
+impl Sequential {
     pub fn new(start: Option<u32>, direction: GeneratorDirection, limit: Option<u32>) -> Self {
         let mut limited: GeneratorLimit = GeneratorLimit::Unlimited;
         let (init, mut las): (u8, u32) = match direction {
@@ -31,7 +31,7 @@ impl SequentialGenerator {
         return Self {
             dir: direction,
             lim: limited,
-            las: las,
+            las,
             xn:  init,
             yn:  init,
             zn:  init,
@@ -43,18 +43,18 @@ impl SequentialGenerator {
         self.las = ((self.xn as u32) << 00) + ((self.yn as u32) << 08) + ((self.zn as u32) << 16) + ((self.wn as u32) << 24);
     }
     fn reg_from_las(&mut self) {
-        self.xn = (self.las >> (24 - (8 * 0)) & 0xFF) as u8;
-        self.yn = (self.las >> (24 - (8 * 1)) & 0xFF) as u8;
-        self.zn = (self.las >> (24 - (8 * 2)) & 0xFF) as u8;
-        self.wn = (self.las >> (24 - (8 * 3)) & 0xFF) as u8;
+        self.xn = ((self.las >> 24) & 0xFF) as u8;
+        self.yn = ((self.las >> 16) & 0xFF) as u8;
+        self.zn = ((self.las >> 08) & 0xFF) as u8;
+        self.wn = ((self.las >> 00) & 0xFF) as u8;
     }
 }
 
-impl Default for SequentialGenerator {
+impl Default for Sequential {
     fn default() -> Self { Self::new(Some(0), GeneratorDirection::Forward, Option::None) }
 }
 
-impl ZippableNumberGenerator for SequentialGenerator {
+impl ZippableNumberGenerator for Sequential {
     fn zip(&mut self, zip: u32) -> Result<u32, &str> {
         self.las = zip;
         self.reg_from_las();
@@ -62,7 +62,7 @@ impl ZippableNumberGenerator for SequentialGenerator {
     }
 }
 
-impl NumberGenerator for SequentialGenerator {
+impl NumberGenerator for Sequential {
     fn skip(&mut self, skip: u32) {
         (self.cn,  _) = self.cn.overflowing_add(skip);
         (self.las, _) = match self.dir {
@@ -88,7 +88,7 @@ impl NumberGenerator for SequentialGenerator {
     }
 }
 
-impl LimitedNumberGenerator for SequentialGenerator {
+impl LimitedNumberGenerator for Sequential {
     fn has_passed_limit(&self) -> bool {
         match self.lim {
             GeneratorLimit::Limited(lim) => {
