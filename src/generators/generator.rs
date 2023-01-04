@@ -3,7 +3,7 @@ use crate::{r#static::*, display::display, message::{MessageToCheck, MessageToPr
 use std::{sync::atomic::Ordering, time::Duration, thread::park_timeout};
 
 pub(crate) fn generate(skip: u128, seed: u128, last: u128, zip: u32, use_zip: bool, no_continue: bool, strategy: NumberGenerators, mut worker_handles: ThreadHandler<()>) -> IPGenerator {
-    let mut generator: IPGenerator = IPGenerator::new(seed, strategy, no_continue);
+    let mut generator: IPGenerator = IPGenerator::new(seed, strategy, no_continue, last);
     let mut skip:      u128        = skip;
 
     if skip > u32::MAX.into() {
@@ -36,7 +36,7 @@ pub(crate) fn generate(skip: u128, seed: u128, last: u128, zip: u32, use_zip: bo
                 display(MessageToPrintOrigin::GeneratorThread, "[ We went all the way arround!!!1!!11!1one!!1!111 ]"); break;
             };
 
-            if generator.can_last() && (last == generator.get_las()) {
+            if generator.las_passed() {
                 display(MessageToPrintOrigin::GeneratorThread, "[ We reached the stipulated end! ]"); break;
             };
 

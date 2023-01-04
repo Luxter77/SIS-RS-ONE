@@ -1,4 +1,4 @@
-use super::{NumberGenerator, ZippableNumberGenerator, GeneratorMessage, GeneratorDirection};
+use super::{NumberGenerator, ZippableNumberGenerator, GeneratorMessage, GeneratorDirection, GeneratorLimit, LimitedNumberGenerator};
 
 use serde::{Deserialize, Serialize};
 
@@ -7,6 +7,7 @@ pub struct SequentialGenerator {
     pub dir: GeneratorDirection,
     pub cn:  u32,
     pub las: u32,
+    #[serde(default = "GeneratorLimit::default")] lim: GeneratorLimit,
     xn: u8,
     yn: u8,
     zn: u8,
@@ -14,7 +15,8 @@ pub struct SequentialGenerator {
 }
 
 impl SequentialGenerator {
-    pub fn new(start: Option<u32>, direction: GeneratorDirection) -> Self {
+    pub fn new(start: Option<u32>, direction: GeneratorDirection, limit: Option<u32>) -> Self {
+        let mut limited: GeneratorLimit = GeneratorLimit::Unlimited;
         let (init, mut las): (u8, u32) = match direction {
             GeneratorDirection::Backward => (255u8, u8::MAX as u32),
             GeneratorDirection::Forward  => (0u8,   u8::MIN as u32),
@@ -22,9 +24,13 @@ impl SequentialGenerator {
         };
 
         if let Some(s) = start { las = s; };
+        if let Some(lim) = limit {
+            limited = GeneratorLimit::Limited(lim);
+        };
 
         return Self {
             dir: direction,
+            lim: limited,
             las: las,
             xn:  init,
             yn:  init,
@@ -45,7 +51,7 @@ impl SequentialGenerator {
 }
 
 impl Default for SequentialGenerator {
-    fn default() -> Self { Self::new(Some(0), GeneratorDirection::Forward) }
+    fn default() -> Self { Self::new(Some(0), GeneratorDirection::Forward, Option::None) }
 }
 
 impl ZippableNumberGenerator for SequentialGenerator {
@@ -79,5 +85,20 @@ impl NumberGenerator for SequentialGenerator {
             true  => { return GeneratorMessage::Looped(self.cn as u128, self.las); },
             false => { return GeneratorMessage::Normal(self.cn as u128, self.las); },
         };
+    }
+}
+
+impl LimitedNumberGenerator for SequentialGenerator {
+    fn has_passed_limit(&self) -> bool {
+        match self.lim {
+            GeneratorLimit::Limited(lim) => {
+                match self.dir {
+                    GeneratorDirection::Forward  => { lim <= self.las },
+                    GeneratorDirection::Backward => { lim >= self.las },
+                    GeneratorDirection::Random   => unimplemented!(),
+                }
+            },
+            GeneratorLimit::Unlimited => false,
+        }
     }
 }

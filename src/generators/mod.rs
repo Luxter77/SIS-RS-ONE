@@ -26,6 +26,14 @@ pub enum GeneratorDirection {
     Forward, Backward, Random
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum GeneratorLimit {
+    Limited(u32),
+    Unlimited,
+}
+
+impl Default for GeneratorLimit { fn default() -> Self { GeneratorLimit::Unlimited }}
+
 #[derive(clap::ValueEnum, Clone, Debug)]
 pub enum NumberGenerators {
     PoorMansGen,
@@ -34,13 +42,6 @@ pub enum NumberGenerators {
 }
 
 impl IPGenerator {
-    pub fn can_last(&self) -> bool {
-        match self {
-            IPGenerator::PoorMansIPGenerator(_) => false,
-            IPGenerator::SequentialGenerator(_) => true,
-            IPGenerator::LCGIPGenerator(_)      => true,
-        }
-    }
     pub fn write_to_save_file(&self) -> std::io::Result<()> {
         let content = serde_json::to_string(&self).unwrap();
         match std::fs::write(CHECKPOINT_FILE, content) {
@@ -59,17 +60,17 @@ impl IPGenerator {
             std::io::Result::Err(why) => std::io::Result::Err(why),
         }
     }
-    pub fn new(seed: u128, strategy: NumberGenerators, no_continue: bool) -> Self {
+    pub fn new(seed: u128, strategy: NumberGenerators, no_continue: bool, last: u128) -> Self {
         if !no_continue {
             if let Ok(gen) = IPGenerator::get_from_save_file() {
                 return gen
             } else {
-                return Self::new(seed, strategy, true);
+                return Self::new(seed, strategy, true, last);
             };
         } else {
             return match strategy {
                 NumberGenerators::PoorMansGen => IPGenerator::PoorMansIPGenerator(PoorMansIPGenerator::default()),
-                NumberGenerators::Sequential  => IPGenerator::SequentialGenerator(SequentialGenerator::default()),
+                NumberGenerators::Sequential  => { IPGenerator::SequentialGenerator(SequentialGenerator::new(seed.try_into().ok().or(Some(0)), GeneratorDirection::Forward, TryInto::<u32>::try_into(last).ok())) },
                 NumberGenerators::LCG => {
                     display(MessageToPrintOrigin::GeneratorThread, &format!("[ WARNING: THE IMPLEMENTATION OF THE FEATURE PRand-LCG IS CURRENTLY BROKEN! ]"));
                     QUEUE_TO_PRINT.add( crate::message::MessageToPrint::Wait(std::time::Duration::from_secs(3)) );
@@ -77,13 +78,6 @@ impl IPGenerator {
                 },
             };
         };
-    }
-    pub fn get_las(&self) -> u128 {
-        match self {
-            IPGenerator::PoorMansIPGenerator(gen) => gen.las.into(),
-            IPGenerator::SequentialGenerator(gen) => gen.las.into(),
-            IPGenerator::LCGIPGenerator(gen)           => gen.x, 
-        }
     }
     pub fn gen_skip(&mut self, skip: u32) {
         match self {
@@ -120,6 +114,13 @@ impl IPGenerator {
             IPGenerator::SequentialGenerator(gen) => { gen.dir },
         }
     }
+    pub fn las_passed(&self) -> bool {
+        match self {
+            IPGenerator::PoorMansIPGenerator(_)                         => { false },
+            IPGenerator::LCGIPGenerator(_)                              => { false },
+            IPGenerator::SequentialGenerator(gen) => { gen.has_passed_limit() },
+        }
+    }
 }
 
 
@@ -136,3 +137,6 @@ pub trait NumberGenerator {
     fn next(&mut self) -> GeneratorMessage;
 }
 
+pub trait LimitedNumberGenerator {
+    fn has_passed_limit(&self) -> bool;
+}
