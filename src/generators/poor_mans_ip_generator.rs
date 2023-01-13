@@ -47,14 +47,12 @@ impl NumberGenerator for PoorMans {
     fn skip(&mut self, skip: u32) { unimplemented!() }
     fn next(&mut self) -> GeneratorMessage {
         self.cn += 1;
-        let x_: u128; let y_: u128; let z_: u128; let w_: u128;
         if let Some(x) = self.xs.get(self.nx) {
             if let Some(y) = self.ys.get(self.ny) {
                 if let Some(z) = self.zs.get(self.nz) {
                     if let Some(w) = self.ws.get(self.nw) {
                         self.nw += 1;
-                        (w_, z_, y_, x_) = ((*x).into(), (*y).into(), (*z).into(), (*w).into());
-                        self.las = (((x_ * 255 + y_) * 255 + z_) * 255 + w_) as u32;
+                        self.las = ((*x as u32) << 00) + ((*y as u32) << 08) + ((*z as u32) << 16) + ((*w as u32) << 24);
                         return GeneratorMessage::Normal(self.cn.into(), self.las);
                     } else {
                         self.nw = 0;
