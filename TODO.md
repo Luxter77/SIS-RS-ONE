@@ -14,6 +14,8 @@
 
 [ ] Implement proper sharding (where possible)
 
+[ ] Add forward DNS capavilities
+
 ## Look at this funny cat
 
 ![They are drinking wine](https://pbs.substack.com/media/FEUaxltXMAE4NmB.jpg)
